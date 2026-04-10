@@ -1,0 +1,14 @@
+torch
+torchvision
+torchaudio
+vllm
+transformers
+accelerate
+datasets
+einops
+Pillow
+cairosvg
+scikit-learn
+sentence-transformers
+bitsandbytes
+flash-attn
