@@ -333,3 +333,14 @@ done
 - -o pipefail: 管道中任意命令失败整条 pipe fail
 
 **适用**：跨项目通用，后续写任何 shell launcher 按此标准。
+
+## Code-fix worker 必须 push（2026-04-11, Reviewer 综合）
+
+**教训**：code-fix worker 默认工作流**必须包含 `git push`**。commit 但未 push 等于 fix 不存在——服务器 `git pull` 拿不到，下次 rerun 继续踩同一个坑。
+
+**规范**：
+- code-fix worker task prompt 必须显式列出 `git push origin <branch>` 步骤
+- worker 回执必须报告 push 的 `from..to` range（例如 `faf4a8a..2fab6ce main -> main`）
+- 派 verify worker 核对时优先看 `git ls-remote origin <branch>` 而非本地 `git log`（本地可能未 fetch）
+
+**与 "worker done race" 并列**，属于跨项目通用 fail-loud 教训。

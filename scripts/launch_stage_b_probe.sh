@@ -88,7 +88,9 @@ done
 
 echo "=== All Stage B extractions complete ==="
 
-# ── Verify ──
+echo "=== STAGE_B_V4_DONE ==="  # sentinel — DO NOT remove, used by worker done check
+
+# ── Verify (informational only — sentinel already emitted above) ──
 echo "=== Verification ==="
 for model in $MODELS; do
     for fmt in $FORMATS; do
@@ -101,5 +103,3 @@ for model in $MODELS; do
         fi
     done
 done
-
-echo "=== STAGE_B_V4_DONE ==="  # sentinel — DO NOT remove, used by worker done check
