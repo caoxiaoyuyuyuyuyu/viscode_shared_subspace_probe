@@ -50,25 +50,38 @@ test -f "$RESOLVED" || { echo "FAIL: resolved_triples.json not generated"; exit 
 # Each model loads once per format (~2min), processes 252 triples (~3-5min)
 
 MODELS="coder viscoder2 qwen25"
-FORMATS="svg tikz asy"
 
+# Method A: svg+tikz parallel on gpu0/gpu1, asy waits (no 2×7B co-resident on same GPU)
 for model in $MODELS; do
-    gpu_idx=0
-    for fmt in $FORMATS; do
-        echo "=== $model / $fmt on gpu $gpu_idx ==="
-        $PYTHON scripts/stage_b_probe.py \
-            --model "$model" \
-            --format "$fmt" \
-            --gpu "$gpu_idx" \
-            --triples-path "$TRIPLES" \
-            --out-dir "$OUT_DIR" &
+    echo "=== $model / svg on gpu 0 ==="
+    CUDA_VISIBLE_DEVICES=0 $PYTHON scripts/stage_b_probe.py \
+        --model "$model" \
+        --format svg \
+        --gpu 0 \
+        --triples-path "$TRIPLES" \
+        --out-dir "$OUT_DIR" &
+    PID_SVG=$!
 
-        # Alternate GPUs within each model (2 parallel per model)
-        gpu_idx=$(( (gpu_idx + 1) % 2 ))
-    done
-    # Wait for all 3 formats of this model to finish before loading next model
-    # (to avoid OOM from 2 models on same GPU)
-    wait
+    echo "=== $model / tikz on gpu 1 ==="
+    CUDA_VISIBLE_DEVICES=1 $PYTHON scripts/stage_b_probe.py \
+        --model "$model" \
+        --format tikz \
+        --gpu 0 \
+        --triples-path "$TRIPLES" \
+        --out-dir "$OUT_DIR" &
+    PID_TIKZ=$!
+
+    wait $PID_SVG $PID_TIKZ
+    echo "=== $model svg+tikz done, starting asy ==="
+
+    echo "=== $model / asy on gpu 0 ==="
+    CUDA_VISIBLE_DEVICES=0 $PYTHON scripts/stage_b_probe.py \
+        --model "$model" \
+        --format asy \
+        --gpu 0 \
+        --triples-path "$TRIPLES" \
+        --out-dir "$OUT_DIR"
+
     echo "=== $model complete ==="
 done
 

@@ -2,8 +2,8 @@
 """Stage B: HF teacher-forcing probe — hidden state extraction.
 
 For each (model, format, triple), teacher-forces reference code through
-the model and extracts residual stream at layers {8,16,20,24,28,32}.
-Mean-pools over code-token positions → saves [6, hidden_dim] per sample.
+the model and extracts residual stream at layers [4,8,12,16,20,24,28].
+Mean-pools over code-token positions → saves [7, hidden_dim] per sample.
 
 Pre-reg: §3 (probe pool), §5 (aggregation), §12 (tool-stack split).
 
@@ -36,9 +36,11 @@ os.environ["HF_DATASETS_OFFLINE"] = "1"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ.setdefault("HF_HOME", "/root/autodl-tmp/.hf_cache")
 
+sys.stdout.reconfigure(line_buffering=True)
+
 
 # ── Config ─────────────────────────────────────────────────────────────
-LAYERS = [8, 16, 20, 24, 28, 32]  # 1-indexed layer numbers (pre-reg §5)
+LAYERS = [4, 8, 12, 16, 20, 24, 28]  # 1-indexed layer numbers (pre-reg §5, v3.3 revision)
 
 MODEL_REGISTRY = {
     "coder":     {"name": "Qwen/Qwen2.5-Coder-7B-Instruct", "type": "chat"},
@@ -109,9 +111,9 @@ def resolve_probe_triples(triples_path, cache_path):
     # ── TikZ: DaTikZ v2 train (no sampling — PROBE_EMBED_SAMPLE_TIKZ=0) ──
     print("[resolve] Loading DaTikZ v2 train...")
     tikz_ds = datasets.load_dataset("nllg/datikz-v2", split="train")
+    tikz_captions = tikz_ds["caption"]  # columnar access (avoid O(n) row copy)
     tikz_valid_indices = []
-    for i in range(len(tikz_ds)):
-        cap = tikz_ds[i].get("caption", "")
+    for i, cap in enumerate(tikz_captions):
         if cap and isinstance(cap, str) and cap.strip():
             tikz_valid_indices.append(i)
     print(f"  {len(tikz_valid_indices)}/{len(tikz_ds)} valid captions")
@@ -120,11 +122,10 @@ def resolve_probe_triples(triples_path, cache_path):
     print("[resolve] Loading VCM-asy...")
     vcm = datasets.load_from_disk(VCM_PATH)
     asy_ds = vcm.filter(lambda x: x["language"] == "asymptote", num_proc=1)
+    asy_messages = asy_ds["messages"]  # columnar access (avoid O(n) row copy)
     asy_valid_indices = []
     asy_code_cache = {}
-    for i in range(len(asy_ds)):
-        row = asy_ds[i]
-        msgs = row["messages"]
+    for i, msgs in enumerate(asy_messages):
         caption, code = "", ""
         for m in msgs:
             if m["role"] == "user":
@@ -223,8 +224,10 @@ def extract_hidden_states(model, tokenizer, prompt_text, code_text,
     vectors = []
     for layer_idx in layers:
         if layer_idx >= len(hidden_states):
-            # Fallback: use last layer
-            layer_idx = len(hidden_states) - 1
+            raise ValueError(
+                f"layer {layer_idx} OOB, model has {len(hidden_states)} hidden states "
+                f"(valid range 0..{len(hidden_states)-1}). Pre-reg LAYERS must not exceed model depth."
+            )
         hs = hidden_states[layer_idx]  # [1, seq_len, hidden_dim]
         code_hs = hs[0, code_start:code_end, :]  # [code_len, hidden_dim]
         pooled = code_hs.float().mean(dim=0)  # [hidden_dim] in fp32
@@ -292,10 +295,13 @@ def main():
     print(f"[stage_b] Loaded in {load_time:.1f}s — "
           f"layers={n_layers}, hidden_dim={hidden_dim}")
 
-    # Validate requested layers exist
+    # Validate requested layers exist (fail-fast, no silent clamp)
     for l in LAYERS:
         if l > n_layers:
-            print(f"WARNING: requested layer {l} > model layers {n_layers}", file=sys.stderr)
+            raise ValueError(
+                f"LAYERS config error: layer {l} > model n_layers={n_layers}. "
+                f"Pre-reg LAYERS must not exceed model depth."
+            )
 
     # ── Process all triples for this format ──
     out_dir = Path(args.out_dir) / args.model / fmt
@@ -329,7 +335,7 @@ def main():
             n_skip += 1
             continue
 
-        # Save [6, hidden_dim] tensor
+        # Save [7, hidden_dim] tensor
         save_path = out_dir / f"{tid}.pt"
         torch.save(result.cpu(), save_path)
         n_ok += 1
@@ -346,12 +352,32 @@ def main():
           f"{elapsed:.1f}s ({n_ok/elapsed:.1f} samples/s)" if elapsed > 0
           else f"\n[stage_b] Done: {n_ok} saved, {n_skip} skipped")
 
+    # ── Post-run pairwise row distinctness sanity assertion ──
+    sample_pts = sorted(out_dir.glob("*.pt"))[:3]
+    for pt in sample_pts:
+        t = torch.load(pt)  # expected [7, hidden_dim]
+        assert t.shape[0] == len(LAYERS), (
+            f"Sanity FAIL: {pt.name} shape {t.shape}, expected [{len(LAYERS)}, *]"
+        )
+        L = t.shape[0]
+        for i in range(L):
+            for j in range(i + 1, L):
+                diff = (t[i] - t[j]).abs().sum().item()
+                assert diff > 1e-3, (
+                    f"Sanity FAIL: {pt.name} row {i}==row {j} (L1 diff={diff})"
+                )
+    if sample_pts:
+        print(f"[sanity] {len(sample_pts)} files × {L*(L-1)//2} pairs all distinct ✓",
+              flush=True)
+
     # ── Write summary ──
     summary = {
         "model": args.model,
         "model_name": model_cfg["name"],
         "format": fmt,
         "layers": LAYERS,
+        "layers_resolved": list(LAYERS),
+        "model_n_layers": n_layers,
         "n_layers_model": n_layers,
         "hidden_dim": hidden_dim,
         "n_triples": n_total,

@@ -1,0 +1,751 @@
+_next_id: 27
+decisions:
+- id: D001
+  date: 2026-04-10 15:01 UTC
+  summary: 立项阶段预注册锁定 7 点；加 Qwen2.5-7B base 作 text-only control
+  rationale: Reviewer 立项审查指出 2 个 critical：(1) Stage D 的 Spearman ρ 若把 layer 拼入 N 会构成伪复制，正确
+    N 应为 (model × format-pair)=24；(2) LLM4SVG 是单格式专家，其 ≈0 的极端点会单方面拉高 ρ 制造"几何预测行为"假象，必须从
+    headline ρ 剔除，作为 qualitative control 单独呈现。另加 5 个 warning：paired-concept 抽样需用共享
+    caption pool (方案 b) 避免 domain shift 混淆；behavioral metric 锁定 format validity +
+    CLIPScore ViT-L/14；加 Qwen2.5-7B base 排除 "visual-specific subspace" null hypothesis；Stage
+    E 限定 condensed scope 避免 cherry-pick；6 属性独立性声明克制。预算从 55→64 GPU-h，仍 ≤70。指令 Agent
+    在 Stage A pilot 之前先产出 docs/pre_registration.md 交 Director 审批。
+  related_experiments: []
+  depends_on: []
+- id: D002
+  date: 2026-04-10 15:03 UTC
+  summary: vLLM hidden-state hook 列为 P0 smoke test；锁定降 scope fallback 顺序；论文初稿目标降级
+  rationale: Reviewer 二审指出两个新 critical：(1) 48h 倒排表多处 30-40% 时间压缩，wall clock 不可行；(2)
+    整套时间线依赖 "Stage A 生成时同步 hook 中间层 residual stream" 这个 free lunch，但 vLLM PagedAttention/优化
+    kernel 默认不暴露中间层 hidden state，HF transformers 路径吞吐 2-5× 慢会打穿预算。决策：(a) 派 vLLM hook
+    smoke test 作为 GPU 上第一件事，结果出来前不放开 Stage A pilot；(b) 预先锁定降 scope 顺序：prompts 500→200
+    → 砍 LLM4SVG → 砍 Qwen2.5-Coder-7B → layer 6→3 → Stage E 跳过；(c) 论文目标从 8-9 页 submission-ready
+    降级为 "Results 表 + Method 段 + Abstract 草稿 + 关键图表"，48h 内交付。
+  related_experiments: []
+  depends_on:
+  - D001
+- id: D003
+  date: 2026-04-10 15:07 UTC
+  summary: 放弃 Stage A/B 合并 pass；eval pool 与 probe pool 严格分割；默认降 scope 到 200 prompts/格式
+  rationale: Reviewer 三审抓到内在矛盾：原方案 "Stage A 生成时顺路 hook 缓存残差流给 Stage B" 要求两阶段用同一批 prompts，但预注册项
+    3 又要 probe 用共享 caption pool、eval 用原始 HF 数据集，两者互斥。锁定 Reviewer 推荐的 (b) 变体：eval pool
+    = SVGenius/vTikZ/VisPlotBench 的 test split，probe pool = 同数据集 train/dev split +
+    sentence-BERT 跨格式匹配抽样，eval∩probe=∅，两次独立 generation pass。放弃"合并 pass 省一遍 forward"的假设。同时默认降
+    scope prompts 500→200（两池都降），GPU 总量 ~26.4h，CPU 总量 ~10-17h，wall clock 估算 44-50h
+    踩 48h 上限。进一步 fallback 顺序：砍 LLM4SVG → 砍 Qwen2.5-Coder-7B → layer 6→3 → 跳 Stage
+    E。vLLM hook smoke test 维持 P0 地位，失败立即级联降 scope。
+  related_experiments: []
+  depends_on:
+  - D001
+  - D002
+- id: D004
+  date: 2026-04-10 15:09 UTC
+  summary: Stage A 用 vLLM 生成 + Stage B 改用 HF transformers teacher-forcing；probe pool
+    扩 200→500；mean-pool code tokens 代替 last-token
+  rationale: Reviewer 四审 pre_registration v3 §3 抓到两个 critical + 两个 warning，修正方案同时解决四个问题：(1)
+    CLIP 50-way 在 200 pool 下每类仅 2.8 样本，probe 被噪声淹没——pool 扩到 500；(2) Qwen2.5-7B base
+    非 Coder 几乎无法生成合法 SVG/TikZ/Asymptote code，自由生成路径下 hidden state 混淆了"不会写代码"和"没有 visual
+    subspace"两个假设——改用 teacher-forcing（caption, reference_code 对喂入，抽 code token 位置
+    residual），"生成能力"与"表示能力"解耦；(3) "last-token residual" 歧义（prompt 最后 token？生成第一个？EOS？）——改
+    mean-pool over code tokens；(4) vLLM hidden-state hook 可行性问题——Stage B 直接用 HF transformers
+    原生 output_hidden_states=True，vLLM 只负责 Stage A 的 behavioral generation throughput，双工具栈分工各得其所。预算重算
+    ~24 GPU-h GPU total + 14h CPU，wall clock ~40h 加论文 8h 够用，比之前 v3 的 26.4 GPU-h +
+    踩 48h 反而更宽松（teacher-forcing 单 forward 远快于自回归生成）。这是经典 probing 文献（Hewitt & Manning,
+    Belinkov）的标准做法，之前方案把 representation probing 和 behavioral evaluation 混在一起是根本错误。
+  related_experiments: []
+  depends_on:
+  - D001
+  - D002
+  - D003
+- id: D005
+  date: 2026-04-10 15:17 UTC
+  summary: 论文目标确认：顶会 submission-ready，60h 预算（48h+12h buffer），不降级 scope
+  rationale: 用户明确确认按顶会目标走，允许 12h buffer。5 模型 + Stage E 全保留，仅在 checkpoint 触发时才砍。Stage
+    A 已被 Reviewer 六审放行。
+  related_experiments: []
+  depends_on:
+  - D004
+- id: D006
+  date: 2026-04-10 16:16 UTC
+  summary: 确认模型替代：Qwen3-Coder-30B-A3B 替代 7B（HF 无 7B）；LLM4SVG-GPT2XL-3B 替代 7B（仅 qualitative
+    control）
+  rationale: Qwen3-Coder 只有 30B-A3B MoE（3B 激活参数），无 7B 版本，96GB VRAM 可承载。LLM4SVG 实际为
+    GPT2-XL 3B 架构，层结构与 Qwen 系列不同，probe layer 需独立映射，但已限定为 qualitative control 不进 headline
+    ρ，影响可控。
+  related_experiments: []
+  depends_on:
+  - D005
+- id: D007
+  date: 2026-04-10 17:33 UTC
+  summary: 砍 Qwen3-Coder + LLM4SVG，headline N 24→18，decoupling 提为 primary narrative；Stage
+    0 重启
+  rationale: Reviewer 七审揭示 stage0_env_setup 实质失败：(1) AutoDL 数据盘只有 79GB（不是几百 GB），当前
+    100% 满；(2) Qwen3-Coder-30B-A3B fp16 体积 60GB，物理上无法与其他 4 模型 + CLIP/sbert/datasets
+    共存于 79GB；(3) D006 替换 7B→30B-A3B 时未核算磁盘约束；(4) LLM4SVG snapshot 零 weights，且其本就在
+    T+5h checkpoint 砍 trigger 上，烧光 Stage 0 时间预算后没必要重下；(5) 5 模型中 4 个未真实下载（VisCoder2/Qwen3-Coder/LLM4SVG
+    snapshots 零 weights，Qwen2.5-Coder 残缺）。砍 Qwen3-Coder + LLM4SVG 后剩 3 visual+text
+    models × 6 format pairs = N=18，decoupling narrative pre-registered 已自动成为 primary
+    候选；这是 pre-registered 的 fallback path 不是 HARKing。GPU 预算从 24h 降到 ~19h 给 Stage 0
+    重启留 5h slack。下载脚本路径 bug（v5 不写 hub/ 前缀导致 ~36G 重复目录）一并修。report.md 必须改成实测态（每个模型 from_pretrained
+    烟测后才能写 ready）。
+  related_experiments:
+  - exp_id: stage0_env_setup
+    role: 失败 root cause
+    result: FAILED — disk 79G 100% 满 / 4/5 模型零 weights
+  depends_on:
+  - D006
+- id: D008
+  date: 2026-04-10 17:40 UTC
+  summary: D008 Reviewer 八审硬化：硬截止绝对 UTC + N=18 power gate + permutation null + Stage
+    E freeze + 磁盘重算 + N=12 切 qualitative
+  rationale: Reviewer 八审给出 2 critical + 7 warning，全部合理。修复：(C1 硬截止) v6 文档把 "T+0' 重置"
+    与 "原 60h 不变" 两种基准混用造成二义。修复方法：硬截止固定为 2026-04-13 03:00 UTC（D001 立项 15:01 UTC + 60h），所有
+    T+ 一律绝对 UTC。剩 ~57h，v7 倒排表 49h 工作量 + 8h buffer。 (C2 N=18 power confound) decoupling
+    primary 后审稿人必问 "是 underpowered artifact 还是真 decoupling"。修复：A1 跑 ρ_true ∈ {0.1,0.3,0.5}
+    下 1000-trial detection power simulation，Results 段必须同时报 CI + power；A2 permutation
+    test：shuffle format-pair label 1000 次重算 ρ，decoupling 声明硬条件改为 "(CI 含 0) 且 (observed
+    ρ 落在 null 分布 10-90 percentile 中段)"，单纯 CI 含 0 不足以声明 decoupling。 (W1 磁盘 80G > 79G)
+    v6 把 vLLM kv cache 错算成磁盘 + datasets 低估 + 没算 hidden state outputs。修复：Stage B 不做
+    hidden state 全量磁盘 dump，probe 拟合 in-memory，只存 probe 系数矩阵；datasets 估 18G；总 ~69G
+    + 10G headroom。 (W2 Stage E data reuse) Qwen2.5-Coder 既是 headline ρ 成员又是 Stage
+    E QLoRA target。修复 A3：Stage E 跑前 freeze pre-intervention probe 系数 + ρ raw + CI
+    到 outputs/frozen_snapshot/，QLoRA 后用 post 模型重跑独立存。 (W4 sanity 2h 窗口紧) sanity +
+    mini pilot + sbert + CLIPScore SNR + 审批合并到 04-10 22:00→04-11 01:00 的 3h 窗口。 (W5
+    残缺 cache resume hash mismatch) 重下 Qwen2.5-Coder 和 VisCoder2 前必须 rm 所有 cache 目录（含
+    hub/）。 (W6 hf-mirror 不稳) 并行下载 + fallback HF_ENDPOINT 到 huggingface.co + source
+    /etc/network_turbo。 (W7 N=12 fallback 未 pre-register) A4：触发 04-11 04:00 砍 Qwen2.5-Coder
+    时 narrative 立即切 qualitative case study + small-N observation，禁止 predictivity claim，这是
+    pre-registered 切换不是事后选择。registry 污染（W3）交给 Agent 在 verification 阶段并行 read_registry
+    sanity check。
+  related_experiments:
+  - exp_id: stage0_env_setup
+    role: 持续修复中
+    result: verification 协议执行中
+  depends_on:
+  - D007
+- id: D009
+  date: 2026-04-10 17:46 UTC
+  summary: D009 Reviewer 九审 v7.1 patch：fallback 时点修正 + Stage E 子预算 + A4 触发后跳 Stage
+    E + Stage 0 2h 中检 + decoupling 单侧判据
+  rationale: Reviewer 九审给出 5 warning + 1 info，全部已闭环到 ROADMAP v7.1。修复：(NW1) v7 fallback
+    checkpoint 把 Stage E 决策时刻写成 04-12 02:00，但实际 Stage D 在 04-11 19:00 完成，Stage E 决策点必须在跑
+    Stage E 前不是跑了一半之后；A5 改成 04-11 19:00 作为唯一 Stage E 启动决策点。 (NW4) A4 触发砍 Qwen2.5-Coder
+    后 Stage E 原 target 也消失，必须明确处置；A7 决定 Stage E 整段跳过（不换 VisCoder2，VisCoder2 没 pre-snapshot
+    切换风险高），8h 还给论文写作 16→24h。 (NW3) Stage E 8h 子预算：QLoRA 5h + post-probe re-fit 1.5h
+    + 分析 1h + freeze I/O 0.5h；A6 强制启动前先 30min QLoRA smoke run 估真实 throughput，超预算就砍
+    condensed。 (NW5) Stage 0 重启 4h 窗口风险高，A8 加 2h 中检 (04-10 20:00 UTC)：下载进度 <50% 就应急砍
+    VisCoder2 降到 N=12 + 激活 A4 qualitative narrative，避免硬撞 4h 上限。 (NW2) datasets 18G
+    估算可能偏乐观（SVGX-Core 单独 10G+），下载前必须先 HEAD/HfApi 估真实大小，超 20G 切 test+minimal subset
+    策略。 (I1) A2 decoupling 判据 "10-90 percentile" 改成 "<90th percentile"（单侧 upper），允许
+    lower tail 也算 decoupling，避免极端 super-decoupling 情况判定漏洞。所有修订对 Agent 透明，等当前 worker_diagnose_20260410T174155
+    回报后批 cleanup 一并下达 D008+D009 完整 sanity worker 规格。
+  related_experiments:
+  - exp_id: stage0_env_setup
+    role: 重启中
+    result: verification 7 步硬冻结协议执行中
+  depends_on:
+  - D008
+- id: D010
+  date: 2026-04-10 17:51 UTC
+  summary: D010 Reviewer 十审 surgical patch：A8 中检改可测三条件 + A9 A4/A8 双触发 degenerate 强制走
+    A7 + A10 minimal subset probe pool 可行性 gate
+  rationale: 'Reviewer 十审 3W+2H，明确放行执行不开新一轮 ROADMAP patch，但 W_new1/W_new2/W_new3 必须
+    pre-register。修复：(W_new1 A8 中检) v7.1 写"<50% 进度"在 HF 并行下载场景下不可精确测量（worker 进度按文件数不按字节）。改成可测三条件
+    — (i) verification 完成且清盘 ≥30G (ii) 4 模型 safetensors 符号链接均 >0 (iii) 至少 3 个模型 from_pretrained
+    烟测通过。任一不满足 → 砍 VisCoder2。 (W_new2 A4+A8 双触发 degenerate 必修) 若 A8 已触发砍 VisCoder2
+    (roster=Qwen2.5-Coder+Qwen2.5-7B base, N=12)，则 04-11 04:00 A4 trigger 不能再砍 Qwen2.5-Coder，否则
+    N=6 论文塌缩。A9 规定：A8 已触发情况下 A4 改走 — 强制 A7 (Stage E 整段跳过 + 论文 16→24h) + Stage A 进度不足时降
+    prompts 200→100 抢时间，不再砍模型。narrative 仍是 A4 qualitative case study。 (W_new3 A10
+    minimal subset probe pool 可行性 gate) NW2 切 minimal subset 后没规定还要支持 500 三元组 cosine≥0.7
+    + pilot sanity ≥80%。增补：minimal subset 触发后必须跑 probe pool 可行性 check，不足时增量补拉 probe
+    train subset 直到凑够 500，磁盘不够时优先砍 Stage E QLoRA checkpoint(1G) 或清 Stage A 已用 generated
+    samples(0.3G)，禁止静默降 cosine 门槛破坏 pre-register #3。 H1 (D009 决策表行) 已确认在 ROADMAP 决策表中（log_decision
+    自动管理），Reviewer 读到的是 stale 版本。H2 (A5 condition 重写) minor，跳过。Reviewer 视角后续切换到 verification
+    报告独立核验 → 清盘路径审计 → 重下完整性交叉验证 → Stage 0 完成后 sanity 数据核对。worker_diagnose_20260410T174155
+    继续跑，预计 18:02 回报。'
+  related_experiments:
+  - exp_id: stage0_env_setup
+    role: 重启中
+    result: verification 7 步硬冻结协议执行中
+  depends_on:
+  - D009
+- id: D011
+  date: 2026-04-10 18:43 UTC
+  summary: 'D011: 接受 A8 (i) disk deviation，Stage 0 v6 PASS，进入 sanity 规划阶段'
+  rationale: cleanup+redownload worker_env_setup_20260410T180239 24min DONE (预算 30-50min)。5/5
+    模型 repo_id 标准路径烟测全 PASS (param dev ≤3.24%, hub/ 标准布局兼容 vLLM/HF transformers 下游加载)。R1
+    反向 + R2 mv-promotion 路径决策正确：避免误删 Qwen2.5-Coder-7B-Instruct 唯一权威副本 (verification-first
+    协议价值兑现)。A8 三条件评估：(ii) 5/5 PASS, (iii) 5/5 PASS (超 ≥3 阈值), (i) DEVIATED 51G/37.3G
+    vs 60G hard gate。Deviation 接受理由：(a) 两份权威模型 ~30G 物理下限不可压缩；(b) D008 W7 修订后磁盘预算明确
+    hidden state 不 dump、kv cache 在 VRAM 不吃 disk；(c) 37.3G free + datasets ~18G → ~19G
+    headroom 对 Stage A/B/E 充裕；(d) cleanup 实际回收 41.7G 接近 dry-run 预期 ~52G，gap 来自 .incomplete
+    实际占用低于估算；(e) 核心硬约束（模型可用性 + repo_id 解析 + 下游兼容）全绿。Reviewer 十二审 audit 残项 (4f uptime
+    / 4g diagnose 落盘 / 4h registry post-write sanity) 由 worker_audit_20260410T184004
+    并行补齐，不阻塞 sanity 规划。下一步：等 audit 回调 + 写 D008 完整规格 dual-stack sanity worker 指令。
+  related_experiments:
+  - exp_id: stage0_env_setup_v6
+    role: primary
+    result: success
+  - exp_id: worker_diagnose_20260410T174155
+    role: verification
+    result: success
+  - exp_id: worker_audit_20260410T184004
+    role: audit_backfill
+    result: in_progress
+  depends_on:
+  - D008
+  - D010
+- id: D012
+  date: 2026-04-10 19:07 UTC
+  summary: 'D012: Sanity 2/5 PASS — P5 power 不足确认 decoupling 为 primary narrative，P1/P3
+    脚本需重写去 AWQ，P2 数据缺失合并到 Stage A prep'
+  rationale: P5 power[ρ=0.30,N=18]=0.218 确认 pre-registered 预期：N=18 parametric ρ 不可检测
+    moderate effect。ROADMAP 已预设 decoupling 为 primary candidate narrative。P4 CLIPScore
+    SNR=11.60 PASS 确认 eval metric 可靠。P1 HF side PASS（28层 hidden states 可提取）确认核心方法可行。脚本
+    AWQ 硬编码和 CLI 不匹配是代码质量问题非方法问题，重写后可 re-run。P2 sbert matching 合并到 Stage A datasets
+    下载后执行，避免单独准备 sanity 数据浪费时间。
+  related_experiments:
+  - exp_id: stage0_dual_stack_sanity
+    role: primary
+    result: partial_pass_2_of_5
+  depends_on:
+  - D011
+  - D008
+- id: D013
+  date: 2026-04-10 19:10 UTC
+  summary: 'D013: 修正 D012 decoupling 表述——power≥0.8 未满足时不能 confirm decoupling，降为 candidate
+    narrative，最终判定依赖 A2 permutation null + hedged language'
+  rationale: Reviewer critical 指出 D012 "decoupling confirmed" 违反 pre-registration
+    自身逻辑：四项必要条件（|ρ|<0.3 + CI含0 + power≥0.8 + permutation null）缺一不可，power=0.218 不满足第三项。absence
+    of evidence ≠ evidence of absence。修正：(1) decoupling 降为 candidate narrative，不是
+    confirmed；(2) A2 permutation null 成为 decoupling 声明的关键补充证据；(3) 论文 Results 必须报告
+    low power 作为 key limitation；(4) decoupling claim 用 hedged language（consistent
+    with / suggestive of，禁 confirms / demonstrates）。同时修正 P4 CLIPScore 表述：降为 infra
+    smoke test，非 eval metric 可靠性验证。
+  related_experiments:
+  - exp_id: stage0_dual_stack_sanity
+    role: primary
+    result: partial_pass_2_of_5
+  depends_on:
+  - D012
+  - D008
+- id: D014
+  date: 2026-04-10 21:19 UTC
+  summary: 'D014: Stage 0 sanity 完成进入 Stage A。P4 CLIPScore MARGINAL (SNR=1.06)：Color
+    PASS, Quadrant/Spatial FAIL → Stage A 前 50 样本二次验证，必要时 quadrant/spatial 改用 attribute-match'
+  rationale: 'P1 PASS (dual-stack 正常), P3 PASS (9/9 cells 全 10/10, 0 OOM), P4 MARGINAL
+    (SNR=1.06, per-dim: Color 2.20 PASS / Shape_count 1.08 / Quadrant 0.67 FAIL /
+    Spatial 0.87 FAIL / Stroke_fill 1.82), P5 已接受 (D012/D013)。CLIPScore 对 color/shape
+    有效但对 position/spatial 弱是 CLIP 已知局限而非 pipeline bug。Stage A 前 50 样本做 per-dimension
+    SNR 二次验证：quadrant/spatial SNR < 1.0 → 该维度改用 programmatic attribute-match（解析 SVG/TikZ
+    代码提取属性）替代 CLIPScore。'
+  related_experiments:
+  - exp_id: stage0_dual_stack_sanity
+    role: primary
+    result: pass_with_limitations
+  depends_on:
+  - D013
+  - D012
+- id: D015
+  date: 2026-04-10 22:53 UTC
+  summary: 'D015: Eval pool 数据源替换 SVGenius/VisPlotBench → SVGX-Core/DaTikZ-test/VCM-hybrid
+    + 训练污染披露'
+  rationale: 'D003 原 spec eval pool = SVGenius/vTikZ/VisPlotBench test split。Stage
+    A Step 1 datasets 下载后发现 (i) SVGenius 无 caption 字段无法作 eval prompt；(ii) VisPlotBench
+    SVG 65 / Asymptote 92 远不足 spec 200/format。worker_research_visplot_contamination_prereg
+    调研后建议替换为：SVG = VPB 65 + VCM-SVG 135 / TikZ = DaTikZ v1 test 200 / Asy = VPB 92
+    + VCM-Asy 108。
+
+
+    contamination 评估：VisCode-Multi-679K 由 the-stack-v2 246K + CoSyn-400K 323K + StarVector
+    svg-diagrams 44K 组成。VisCoder2-7B = Qwen2.5-Coder-7B-Instruct SFT on VCM（同 owner
+    TIGER-Lab 官方 declared）→ VisCoder2 对 VCM 三子集 contamination 全部 HIGH。Qwen2.5-Coder
+    GitHub cutoff 2024-02：CoSyn-400K 2025-02 post-cutoff（LOW）；StarVector svg-diagrams
+    2023-12 pre-cutoff GitHub 公开（SVG MEDIUM）。Qwen2.5-7B base 全部 LOW。
+
+
+    落盘内容：(a) docs/pre_registration.md v3.3 含 §3 eval pool 重写、§3-bis 训练污染披露表、过滤规则、seed
+    20260410；(b) artifacts contamination_audit_d015。本决策追溯批准：worker 在 audit 完成前已预下载
+    VCM 2.9G + datikz-v2 7.7G（违规），制度规则已落 memory.md（worker 必须显式 entity 白名单，禁 opportunistic
+    download）。</rationale>
+
+    <parameter name="related_experiments">[{"exp_id": "stage_a_vllm", "role": "primary",
+    "result": "blocking_pre_reg_drift_resolved"}]'
+  related_experiments: []
+  depends_on:
+  - D003
+  - D013
+  - D014
+- id: D016
+  date: 2026-04-10 22:54 UTC
+  summary: 'D016: Probe pool VCM 污染修复 + VisCoder2 移出 headline ρ → N=12 主，N=18 辅，A4
+    qualitative case study 路径正式激活'
+  rationale: 'Reviewer 十三审 critical：contamination_audit §5.2 错误声明 "probe pool 不含 VCM"，但
+    step2_sbert_matching.py 实际 probe pool TikZ = DaTikZ train 49K + VCM-latex 124K（71.7%
+    VCM），Asy = VCM-asy 22K（100% VCM）。VisCoder2 对 VCM 三子集 contamination HIGH（D015）→
+    Stage B linear probe fit 在 VisCoder2 上对 TikZ/Asy 是 memorization not generalization，probe
+    quality (r²/CKA) 系统性上偏。
+
+
+    D015 contamination_audit §5.1 提出的 "rank-based ρ + N=18 robustness" mitigation
+    实际无效：N=18 排除 VisCoder2 6 cells 只去掉 behavior side（Stage A），probe geometry 污染（Stage
+    B）仍存在于剩余 18 cells 的对照基准上。permutation null 假设 H0 unstructured 也被 contamination
+    引入的 model×format 非随机结构破坏。
+
+
+    修复方案（综合 Reviewer 建议 + 时间预算）：
+
+
+    (1) Probe pool 清洁化：
+
+    - TikZ probe 移除 VCM-latex 124K，仅保留 DaTikZ v1 train 49K
+
+    - SVG probe 已是 SVGX-Core-250k，确认未含 VCM（StarVector svg-diagrams ⊂ VCM 但 ≠ SVGX-Core，需
+    worker 验证）
+
+    - Asy probe = VCM-asy 22K 是唯一可用源（48h budget 内无替代），保留但显式声明污染
+
+
+    (2) Headline ρ 计算 VisCoder2 整体剔除：
+
+    - 原 24-cell 矩阵 (4 模型 × 6 格式对) → D007 已减为 3 模型 × 6 格式对 = 18 cells → D016 进一步剔 VisCoder2
+    → **2 模型 (Qwen2.5-Coder + Qwen2.5-7B base) × 6 格式对 = 12 cells = N=12**
+
+    - 这是 D008 W7 / D010 W_new2 预注册的 A4 fallback path：N=12 qualitative case study +
+    small-N observation + 禁 predictivity claim
+
+    - A4 触发条件原为 "04-11 04:00 Stage A 进度 <50%"，本次 D016 因 contamination 提前激活 A4，narrative
+    切换 pre-registered 不构成 HARKing
+
+
+    (3) N=18 作为 contamination-aware auxiliary：
+
+    - 论文同时报 N=18 (含 VisCoder2)，但显式标注 VisCoder2 TikZ/Asy probe quality 受 VCM memorization
+    影响
+
+    - 对比 N=12 与 N=18 的 ρ 差异是 contamination effect 的直接量化证据
+
+
+    (4) VisCoder2 在论文中的角色：
+
+    - 不进 headline ρ
+
+    - 进 Discussion §3-bis 作 memorization-floor reference
+
+    - Behavioral side (vLLM 生成 + CLIPScore) 仍执行作为 visual-task SFT baseline 对照
+
+
+    (5) Decoupling narrative shift：
+
+    - N=12 power 比 N=18 (0.218) 更低，decoupling 完全不能 quantitative claim
+
+    - shift 为 "exploratory observation + methodology framework"，A2 permutation null
+    在 N=12 上重做
+
+    - 论文重心从 "decoupling predictivity" 转为 "the framework + qualitative geometric finding"，弱化
+    quantitative ρ claim
+
+
+    (6) A7 联动：A4 激活后 Stage E QLoRA 整段跳过（D009 已规定），8h 还给论文写作 16→24h
+
+
+    (7) D016 触发 contamination_audit.md §5.2 修订：必须诚实披露 probe pool 2/3 污染，删除 "rank-based
+    鲁棒" 错误论证
+
+
+    related: D003, D007, D008, D010, D013, D015 + reviewer 十三审 critical</rationale>
+
+    <parameter name="related_experiments">[{"exp_id": "stage_a_vllm", "role": "primary",
+    "result": "narrative_shift_to_A4"}]'
+  related_experiments: []
+  depends_on:
+  - D007
+  - D008
+  - D010
+  - D013
+  - D015
+- id: D017
+  date: 2026-04-10 22:54 UTC
+  summary: 'D017: SBERT cosine 门槛硬回 0.70，禁脚本静默降级，fallback 仅允许 ≥0.65/N=400 且必须 log_decision'
+  rationale: 'Reviewer 十三审 critical (info 升级)：Stage A Step 2 sbert matching 在 logs/step2_sbert.log
+    静默将 cosine 门槛从 0.7 降到 0.6（"Only 87 triples ≥ 0.7, trying 0.6..."），违反 D010 W_new3
+    明文 "禁止静默降 cosine 门槛破坏 pre-register #3"。step2_report.json 实际 min cosine 0.6449，pilot
+    triple 1/9 已经语义跨格式不同源（11:11 墙钟 vs 10:45 时钟，calendar grid vs meal planning），不构成有效
+    paired-concept 三元组，会污染 Stage B linear probe fit。
+
+
+    根因分析：
+
+    (a) PROBE_EMBED_SAMPLE=10000 采样过小（SVG 250k 池仅采 3.9%, TikZ 49k 池采 20%），未榨干候选空间就降门槛；
+
+    (b) caption 长度异构未归一化（asy caption 数百 token 远长于 SVG/TikZ），系统性拉低 cosine；
+
+    (c) 脚本未对 cosine 门槛 raise，silent fallback 直接执行。
+
+
+    修复硬约束（写入 scripts/step2_sbert_matching.py 重写）：
+
+    1. cosine 门槛硬编码 0.70，不达 500 直接 raise SystemExit + 写错误到 step2_report.json，禁 silent
+    fallback
+
+    2. PROBE_EMBED_SAMPLE 提到至少 50000；Asy 池 22k 直接全用（不采样）
+
+    3. caption 长度归一化：sbert tokenizer 统一截断到前 50 token
+
+    4. 输出 step2_report.json 必须含 threshold (0.70 fixed) + n_triples + mean/median/min
+    cos + embed pool sizes + 触发 raise 的 fallback 条件
+
+    5. triple JSON 加 per-triple metadata：来源 dataset / 截断前后 caption / 三对 cosine
+
+
+    Fallback 协议（仅修复后仍不达 500 才允许）：
+
+    - 不接受降到 0.6
+
+    - 允许降至 cosine ≥0.65 + N=400，但必须正式 log_decision (D018 或 patch D017) + 明写到 limitations
+
+    - 不允许 silent fallback；任何降级必须在 worker callback 后由 Director 显式批准
+
+
+    教训沉淀（项目 memory.md，由 Agent 落盘）：
+
+    - 任何 pre-registered threshold/source 不得在脚本内静默降级，遇到不达标必须 raise + callback Director
+
+    - Worker callback 内容看似空（"Acknowledged. No further action."）必须当 FAIL 信号，verify
+    worker 兜底
+
+    - Pre-reg 版本变更必须配对 log_decision，不能只 register pre_reg 不写决策</rationale>
+
+    <parameter name="related_experiments">[{"exp_id": "stage_a_vllm", "role": "primary",
+    "result": "step2_v1_invalid_v2_required"}]'
+  related_experiments: []
+  depends_on:
+  - D003
+  - D010
+  - D015
+  - D016
+- id: D018
+  date: 2026-04-10 22:58 UTC
+  summary: 'D018: Reviewer 14 审 critical 综合裁决 — Path A 激活，v3.3 升 v3.4，step2 v1 作废，撤回
+    datikz-v2 cleanup'
+  rationale: "Reviewer 十四审 critical 6 条 + warning 4 条，核心是 v3.3 pre-reg 与 step2 v1\
+    \ 实际产出 6 项硬冲突，两者互斥不可共存。Reviewer 强烈推荐 Path A（按 v3.3 走 + step2 v1 作废 + 重跑），Path\
+    \ B（追认 step2 v1 + 重写 v3.3）属 HARKing。\n\n**裁决：Path A 激活。** 理由：(a) Path B 让 headline\
+    \ ρ 的 pre-registration 效力归零，方法论崩塌；(b) v3.3 是 contamination_audit worker 综合 D015\
+    \ 后的成熟设计，step2 v1 是匆忙跑的，应以 v3.3 为锚；(c) 时间预算允许（剩 52h，重做估 +3-4h）。\n\n**6 条冲突的处理**：\n\
+    \n1. **eval pool 数据源**（v3.3 vs step2）→ 按 v3.3 重跑\n   - SVG: VPB 65 + VCM-SVG 135（不是全\
+    \ SVGX-Core）\n   - TikZ: DaTikZ v1 test 200 ✅一致\n   - Asy: VPB 92 + VCM-Asy 108（不是全\
+    \ VCM-asy）\n   - filter: code 50-2000 / caption 10-300 / render-success / hash\
+    \ dedup\n   - seed 20260410（不是 42）\n\n2. **probe pool 数据源**（v3.3 vs step2）→ 按\
+    \ v3.3 重做\n   - SVG: SVGX-Core-250k\n   - TikZ: vTikZ-train + DaTikZv2-train（不是\
+    \ DaTikZ v1 train + VCM-latex；**这意味着 datikz-v2 7.7G 必须保留**）\n   - Asy: VCM-asy（v3.3\
+    \ 称 \"VisCoder2 Asymptote split\"）\n   - **此处 v3.3 自身有内在矛盾**：probe Asy = VCM-asy\
+    \ 是 VisCoder2 SFT 直接训练数据，§3-bis 只披露 eval pool contamination 没披露 probe pool contamination\
+    \ → v3.4 必须新增 §3-bis-2\n\n3. **cosine 0.6 vs 0.7**（v3.3 §3-quater 锁 0.7）→ step2\
+    \ v1 作废，重跑维持 0.7；不够 500 则 shrink pool 不降门槛（D017 已锁）\n\n4. **build_eval_pool_v3_3.py\
+    \ 缺失** → v3.4 升级版必须创建 build_eval_pool_v3_4.py，输出 JSONL hash 写 decisions.yaml\n\
+    \n5. **contamination_audit.md §5.2 与 v3.3 §3 自相矛盾** → §5.2 必须修订承认 probe pool TikZ/Asy\
+    \ 含 VCM/VCM-asy，与 D016 同向\n\n6. **datikz-v2 7.7G** → **不是误下**，而是 v3.3 §3 line\
+    \ 122 锁定的 probe source。**撤回我之前的 cleanup 删除指令**。只删 legacy hf_cache dupes 5.1G。\n\
+    \n**v3.4 vs D016 协调**：\n- D016 主线\"VisCoder2 移出 headline ρ → N=12 + A4 路径\"**保留**\n\
+    - D016 次线\"TikZ probe = DaTikZ v1 train only\" **作废**，改为按 v3.3 vTikZ-train + DaTikZv2-train\n\
+    - D016 次线\"Asy probe = VCM-asy 保留 + 显式声明\" **保留**，写入 v3.4 §3-bis-2\n- contamination_audit\
+    \ §5.2 修订与 D016 同向，但披露范围扩大到 probe pool\n- v3.4 必须明确：probe pool VisCoder2 contamination\
+    \ → VisCoder2 不进 headline ρ → headline N=12 + auxiliary N=18 with caveat\n\n**warning\
+    \ 处理**：\n- W1 probe pool × VisCoder2 HIGH → v3.4 §3-bis-2 + N=12 主线（已 D016 决定）\n\
+    - W2 SVGX-Core × Qwen2.5-Coder 独立 audit → 必须补做（svgx-starvector 关系也是这条的子集）\n- W3\
+    \ datikz-v2 与 v3.3 关联 → 已 reverse cleanup\n- + 同样要补 DaTikZ × Qwen2.5-Coder / VPB\
+    \ × Qwen2.5-Coder / vTikZ × Qwen2.5-Coder 三个独立 audit\n\n**预期产出（v3.4 完整 packet）**：\n\
+    1. docs/pre_registration.md v3.4（含 §3 重写、§3-bis 不变、新 §3-bis-2 probe pool contamination\
+    \ disclosure、§3-quater hard cosine 0.7、§9 与 §10 不变）\n2. scripts/build_eval_pool_v3_4.py\
+    \ 实现 + 落盘 JSONL + SHA256 写 decisions.yaml\n3. scripts/step2_sbert_matching.py\
+    \ 重写按 v3.4 sources + D017 cosine 0.7 hard\n4. step2_v2 重跑 + verify\n5. contamination_audit_v2.md\
+    \ §5.2 修订 + register\n6. 4 个独立 contamination audit (SVGX-Core / DaTikZ v1+v2 /\
+    \ vTikZ / VPB) × Qwen2.5-Coder & Qwen2.5-7B base\n7. cleanup_report 修订（只删 legacy\
+    \ 5.1G，保留 datikz-v2）\n\nrelated: D003 D007 D008 D010 D013 D014 D015 D016 D017\
+    \ + Reviewer 14 审 critical 6 条</rationale>\n<parameter name=\"related_experiments\"\
+    >[{\"exp_id\": \"stage_a_vllm\", \"role\": \"primary\", \"result\": \"v3.3_v_step2_inconsistency_resolved_via_path_A\"\
+    }]"
+  related_experiments: []
+  depends_on:
+  - D015
+  - D016
+  - D017
+- id: D019
+  date: 2026-04-10 23:03 UTC
+  summary: 'D019: Reviewer 15 审 critical → N=12 power simulation 必跑 + decoupling claim
+    在 N=12 下完全禁止 + N=18 重定位为 "exploratory with contamination floor" 非 robustness check
+    + 投稿目标降级'
+  rationale: 'Reviewer 15 审针对 v11 ROADMAP（D015/D016/D017 后状态）给出 2 critical + 4 warning，其中
+    critical 已是 D008 早期硬条件被 A4 激活后疏漏。
+
+
+    **C1: N=12 power simulation 缺失（违反 D008 C2 硬条件）**
+
+    - D008 C2 原文："A1 跑 ρ_true ∈ {0.1,0.3,0.5} 下 1000-trial detection power simulation，Results
+    段必须同时报 CI + power"
+
+    - 已知 N=18 power: 0.218/0.435/0.591；N=12 估保守 ≈ 0.13/0.30/0.40
+
+    - A1 必须扩展为双跑（N=12 + N=18），ROADMAP "Stage B" 任务里加这条
+
+    - 不可省
+
+
+    **C2: N=12 decoupling claim 完全禁止（避免 "power 不足必然满足判据" 陷阱）**
+
+    - D013 判据：|ρ|<0.3 ∧ CI⊃0 ∧ observed ρ < null 90th
+
+    - N=12 下 bootstrap CI 极宽 → CI⊃0 几乎一定满足；permutation null variance 大 → ρ<90th 也几乎一定满足
+
+    - 后果：N=12 decoupling 变成"数据必然结果"而非"实证观察"，违背 D013 "absence of evidence ≠ evidence
+    of absence"
+
+    - 修复：v3.4 §9 + §10 deviation policy 明文写"N=12 下 decoupling claim 完全禁止"，等效于在判据上加
+    "power ≥ 0.5 hard gate"
+
+    - N=12 论文叙事仅做 qualitative observation + framework contribution，不做任何 quantitative
+    decoupling claim
+
+
+    **W3: N=18 auxiliary 重定位**
+
+    - 原 D016 把 N=18 写为"含 VisCoder2 的 contamination-aware auxiliary 报告"，暗示是 N=12 robustness
+    check
+
+    - 但 N=18 auxiliary 中 VisCoder2 的 Asy 相关 2 cells (Asy→X / X→Asy) 仍受 VCM-asy memorization
+    污染（即使 D018 把 probe pool TikZ 改回 vTikZ+DaTikZv2，Asy probe 仍是 VCM-asy）
+
+    - 已知污染的"robustness check"信息价值≈0
+
+    - 修复：v3.4 §9 把 N=18 重定位为 "full-model exploratory view with known memorization
+    floor on Asy/TikZ for VisCoder2"，明文取消其 "N=12 robustness check" 角色
+
+    - 论文 Discussion 用 N=12 vs N=18 的 ρ 差异作为 contamination effect 的直接量化证据，而不是 robustness
+    验证
+
+
+    **W2: 投稿目标降级（Director 裁决）**
+
+    - 原目标：NeurIPS 2026 / EMNLP 2026 main conference
+
+    - N=12 现状：2 个同家族 Qwen2.5 模型（Coder vs base）= 更像 family ablation，不是 cross-model
+    subspace 分析
+
+    - Reviewer 评估：top venue main conference acceptance 风险高，建议 EMNLP findings / ACL
+    workshops / NeurIPS workshops on mechanistic interpretability
+
+    - **Director 裁决（Auto Research mode）**：接受降级。继续按 D018 Path A 推进 N=12 case study
+    + framework contribution，**主投目标改为 EMNLP findings / NeurIPS MI workshop**，主会作 stretch
+    target 但不强求。理由：(a) 48h 预算内补第 4 模型 (DeepSeek-Coder/StarCoder) 不可行（数据下载 + 模型 setup
+    + 烟测 + 全量生成 ~10-15h，吃光 buffer）；(b) framework + qualitative finding 在 workshop
+    是 strong contribution；(c) 降级后写作压力小，可深挖 limitations + reproducibility，反而加分；(d)
+    post-deadline 可以补第 4 模型作 v2 投主会
+
+    - 论文写作 framing：从 "predictive visual program subspace" → "framework + Qwen2.5 family
+    case study"
+
+    - abstract / intro / conclusion 全部按 case study 框架重写
+
+
+    **W1 & W4 处理**：W1 (SVGX-Core × Qwen2.5 audit) 已被 D018 Phase 3 覆盖（4 个独立 audit 中的一个）。W4
+    (Stage A 预算 5h → 7h) 接受调整，论文写作 24h → 22h，buffer 11h → 11h（实际更紧但可控）。
+
+
+    **I3 D017 fallback 路径确认**：D017 完整 fallback = "若 50k sample + caption norm 后仍不达
+    500 triples ≥0.7，按 v3.3 §3-quater 缩 pool（不降门槛），允许接受 N<500 + 正式 log_decision；若
+    N<400 则升级为 critical 由 Director 决策"。这与 v3.3 §3-quater "the pool is shrunk and recorded
+    in decisions.yaml rather than the threshold lowered" 完全对齐。
+
+
+    **v3.4 必须新增条款（D019 → P2 update）**：
+
+    - §9 N=12 narrative 全改 case study 框架
+
+    - §10 deviation policy 加 "N=12 下 decoupling claim 完全禁止" + "N=18 不得作为 N=12 robustness
+    check 论述"
+
+    - §3-bis-2 probe pool contamination 表（D018 已规划）
+
+    - §11 venue 降级声明（投 EMNLP findings / workshop）
+
+
+    related: D008 C2, D013, D016, D018 + Reviewer 15 审 critical</rationale>
+
+    <parameter name="related_experiments">[{"exp_id": "stage_a_vllm", "role": "primary",
+    "result": "N12_narrative_locked"}]'
+  related_experiments: []
+  depends_on:
+  - D008
+  - D013
+  - D016
+  - D018
+- id: D020
+  date: 2026-04-11 00:07 UTC
+  summary: 'D020: Eval pool filter 参数放宽 — code ∈ [50, 8000], caption ∈ [10, 500]；VCM
+    字段提取逻辑需验证'
+  rationale: build_eval_pool_v3_4.py 执行结果：VCM 69,160 条全部被 filter 拒绝（SVG 46,621 + Asy
+    22,539 = 0 通过）。根因：v3.4 §3 code ∈ [50, 2000] 对完整 SVG/Asy 源文件过于严格（visual code 文件通常
+    2000-6000 chars），caption ∈ [10, 300] 对 VCM 结构化描述也偏紧。放宽到 code ∈ [50, 8000]（vLLM
+    max_model_len=4096 tokens ≈ 12K chars，留 prompt 空间后 8K code 是安全上界）、caption ∈ [10,
+    500]。同时要求 Agent 验证 VCM 字段提取逻辑——确认 code 提取的是 assistant 消息中的纯代码块而非含 preamble 的完整回复。如放宽后仍不足
+    200，汇报分布让我二次决策。
+  related_experiments:
+  - exp_id: stage_a_vllm
+    role: blocker
+    result: eval pool build failed, 0 VCM samples passed filter
+  depends_on:
+  - D018
+- id: D021
+  date: 2026-04-11 00:10 UTC
+  summary: 'D020-patch: caption 上限进一步放宽至 3000；VCM code 提取必须是纯代码块非全文'
+  rationale: D020 caption ∈ [10, 500] 仍不够——VCM user message 是结构化生成指令，min=868, median=1344-1470
+    chars。这些是合法的 detailed prompts 不是噪声，caption 上限的目的是过滤空/垃圾条目，不应误杀正常指令。放宽到 3000 覆盖绝大部分
+    VCM 数据（median ~1400, p75 估 ~2000）。同时强调：VCM code 提取必须修复为纯代码块（extract `<svg>...</svg>`
+    / `\\begin{tikzpicture}...\\end{tikzpicture}` / Asymptote code block），不是 assistant
+    content 全文。提取修复后 code 长度会显著缩短，[50, 8000] 应足够。如修复提取后仍不足目标数，考虑 eval pool target
+    从 200 降到实际可用数量（需三格式平衡）。
+  related_experiments:
+  - exp_id: stage_a_vllm
+    role: blocker
+    result: VCM caption min=868 exceeds D020 cap=500
+  depends_on:
+  - D020
+- id: D022
+  date: 2026-04-11 00:43 UTC
+  summary: 'D022: step2 扩大采样——Asy 全量 22k, TikZ 全量 52k, SVG 50k，维持 cosine ≥0.70 + unique
+    约束'
+  rationale: step2 v2 在 10k/格式采样下仅得 20 triples（cosine ≥0.70, unique）。但 cosine 分布质量好（mean=0.734,
+    min=0.705），问题在于跨格式高相似度配对是长尾事件，10k 采样覆盖不够。扩大到 Asy 全量 22k + TikZ 全量 52k + SVG 50k（总
+    ~124k，约 4x 当前），预计 ~1h。如果扩采后 triples ≥50 则足够 N=12 case study framing；如果仍 <30，再考虑降阈值到
+    0.65（需新决策覆盖 D017）。不直接降阈值是因为 D017 有明确理由（probe 质量），先用数据量解决。
+  related_experiments:
+  - exp_id: stage_a_vllm
+    role: dependency
+    result: 'step2 v2: 20/500 triples at cosine≥0.7 with 10k/format sampling'
+  depends_on:
+  - D017
+  - D021
+- id: D023
+  date: 2026-04-11 01:22 UTC
+  summary: 'D023: 正式接受 N=252 triples — D017 fallback 合法执行，pool shrunk 而非 threshold
+    lowered'
+  rationale: D022 扩采样后 252 triples (cosine ≥0.70, unique idx)。虽低于 D019 I3 的 N<400
+    critical 阈值，但：(1) pre-reg v3.4 §3-quater 明确允许 "pool is shrunk and recorded in
+    decisions.yaml rather than the threshold lowered"；(2) 252×3=756 prompt-code 对，N=12
+    case study framing 下统计功效充分；(3) cosine 质量好 (mean=0.729, min=0.700, max=0.845)；(4)
+    Asy pool 仅 22k 是物理上限，扩采样已达最大产出。论文 Limitations 中披露 N=252 vs 原 target 500。
+  related_experiments:
+  - exp_id: stage_a_vllm
+    role: dependency
+    result: 'D022 expanded sampling: 252 triples at cosine>=0.70'
+  depends_on:
+  - D017
+  - D019
+- id: D024
+  date: 2026-04-11 03:55 UTC (revised 04:00 UTC after Reviewer warning)
+  summary: 'D024: 2 GPU 接入 + 方案 A data-parallel + n_shots=2 via vLLM SamplingParams
+    (n=2, seed) + per-format max_tokens (SVG/TikZ=1024, Asy=2048) + T=0.3 + stop tokens
+    来自 p3_coder_rerun.py + 保守磁盘清理'
+  rationale: "autodl-viscode-probe 升级 1× → 2× RTX PRO 6000 96GB（cuda:0 + cuda:1）。\n\
+    Worker 探测：cuda:0/cuda:1 各 97253 MiB free, 0% util；step2 D022 扩采样在实例 reboot 前\n\
+    自然完成 N=252 triples（mean cos 0.7288），无需重跑；磁盘 18G free。Planning 文档\nart_20260411_aac67b\
+    \ §7 列出 4 项决策点，Director 全批：\n(1) 方案 A: data-parallel + 模型串行 (2 vLLM 进程绑各自 GPU,\
+    \ prompt_id % 2 切分,\n    3 模型顺序加载-卸载)。加速比 1.97x: Stage A gen 5.0h → 2.55h。否决方案\
+    \ B (model-parallel\n    handover, 3.33h, KV cache 抢显存崩了一起崩) 和方案 C (TP=2, ~4.5h\
+    \ NCCL 开销, 7B 模型\n    单卡 96GB 完全装得下, TP 是浪费)。\n(2) 代码: 新写 scripts/stage_a_gen.py（CLI\
+    \ 含 --shard-id/--num-shards/--gpu/--n-shots/--limit），\n    p3_rerun_verified.py\
+    \ 保留作 reference 不动（硬编码 10 prompt + 无 shard + 无 n_shots,\n    in-place patch 风险高）。\n\
+    (3) n_shots=2: vLLM SamplingParams(n=2, seed=base+pid) 共享 prefix KV cache。两 sample\n\
+    \    必须用不同 seed offset (OFFSET=10000) 防退化, dry-run 中比对 hash 验证 ≥80% prompt 双\n\
+    \    shot 不同。\n(4) 磁盘清理: 保守 3.05G (VCM-679k cache 2.9G + .hf_cache .locks ~150M)\
+    \ → free 21G ≥19G\n    门槛。激进 12.1G 否决，因 svgx-core / datikz 是 probe pool 依赖，删了\
+    \ contamination\n    重评要 ≥4h 得不偿失。\n实施 worker (worker_stage_a_gen_implementation_20260411T035338)\
+    \ Phase 1-5: 清理 → 写\n脚本 → dry-run 1 model × 30 prompt × n=2 → commit/push → 注册\
+    \ stage_a_gen PENDING。\n禁止预启动 GPU, 等 Director approve_experiment + director_allocate_gpus\
+    \ 后 Agent\nsubmit_on_allocated。预算: 47h - 33h work = ~14h buffer (节省 2.45h vs 单\
+    \ GPU)。\nresources.yaml cuda:1 已注册 (Agent 落地, list_available_gpus 验证 config_available=true)。\n\
+    \n--- 04-11 04:00 UTC Reviewer 修正（v2 worker, 原 worker cancelled） ---\nReviewer\
+    \ 对 2gpu_plan.md 出 3 处 critical warning, 必须修正后才能写 stage_a_gen.py:\n(1) SamplingParams\
+    \ 来源错: 2gpu_plan.md §2.2 说从 p3_rerun_verified.py 复用 stop tokens\n    是错的, 该脚本第\
+    \ 132 行仍是旧 buggy 配置 stop=[\"```\"] (D008 之前的 3/10 低 validity bug\n    来源)。format-specific\
+    \ stop token 修复实际在 scripts/p3_coder_rerun.py:39/47, 从未\n    回填到 p3_rerun_verified。复用规则修正:\
+    \ 模型加载/卸载样板 + validity checker 来自\n    p3_rerun_verified.py; SamplingParams +\
+    \ per-format stop tokens 必须从 p3_coder_rerun.py\n    复制。\n(2) per-format max_tokens\
+    \ 不能统一 1024: Asy 无 stop token 靠长度截断, 1024 会中途截断\n    Asy 程序导致 valid 率掉。明确写死 SVG=1024,\
+    \ TikZ=1024, Asy=2048。\n(3) temperature 必须 0.3 不是 0.7: p3_rerun_verified 与 p3_coder_rerun\
+    \ 全部 T=0.3,\n    sanity 验证通过的也是 T=0.3, Stage A 与 sanity 可比性必须保持温度一致。n_shots=2\n\
+    \    通过 SamplingParams(n=2, seed=...) 实现多样性, 不靠提温。这是修正规划文档笔误,\n    不是 deviation。\n\
+    附加要求: stage_a_gen.py 落盘后贴出实际 SamplingParams 代码块 + dry-run 后 3 个 format\n各看 1 个样本\
+    \ (前 200 + 后 200 字符) 确认 stop token 正确截断。\ncuda:1 双保险: resources.yaml 注册 (已落地不回滚)\
+    \ + 脚本内 import vLLM 前显式\nos.environ[\"CUDA_VISIBLE_DEVICES\"] = \"0\" 或 \"1\"\
+    。\n新 worker: worker_stage_a_gen_implementation_20260411T035903 (v2, 含全部修正)。\n\n\
+    --- 04-11 05:20 UTC Reviewer 二审 info 修正（dry-run PASS 后 launch 前）---\nReviewer\
+    \ 二审 stage_a_gen 代码 + dry-run 全部 PASS（3 处 critical 修正落地确认），\n但发现 1 处未声明的 SamplingParams\
+    \ 偏离 → 必须 fix 后才能 submit_on_allocated:\ntop_p=0.95 → 删除让 vLLM 走默认 top_p=1.0。p3_coder_rerun.py\
+    \ 与 p3_rerun_verified.py\ngrep 确认无显式 top_p（默认 1.0），sanity 验证的就是 T=0.3 + top_p=1.0\
+    \ 这一组，Stage A\n必须严格对齐保持可比性。stage_a_gen.py primary path (n=n_shots) + fallback\
+    \ path\n(n=1 双 generate) 两处 `top_p=0.95,` 行已删除（diff -2 行，零功能变化，无需 re-dry-run）。\n\
+    fix commit: 6489577 \"fix: stage_a_gen drop top_p=0.95 to align with sanity defaults\"\
+    。\n最终生效 SamplingParams 组: T=0.3, top_p=default(1.0), n=2 共享 prefix KV (fallback\n\
+    --no-shared-kv seed offset 10000), per-format max_tokens (SVG/TikZ=1024, Asy=2048),\n\
+    stop tokens 来自 p3_coder_rerun.py (D008 fix), include_stop_str_in_output=True。\n\
+    \n--- Eval 阶段 awareness（不阻塞 launch，写入 ROADMAP stage_b 启动前 checklist）---\n(a) SVG\
+    \ truncated=length 监控: dry-run 4/20=20% SVG 触发 max_tokens 截断 (valid=True\n   \
+    \ 因含 <svg, 但结构可能不完整)。eval 脚本必须对 truncated==True 显式计数, 全量\n    Stage A 完成后看比例:\
+    \ ≤20% 接受现状; >20% 启动 D025 决策把 SVG max_tokens 提到\n    1536 或 2048 (注意 cost 翻倍)。\n\
+    (b) Markdown 围栏 strip: Coder 模型会吐 ```xml\\n...```, CLIPScore/渲染前必须 strip\n   \
+    \ 三反引号围栏。p4_clipscore_20.py:38-41 extract_svg() 用正则 r\"(<svg[\\s\\S]*?</svg>)\"\
+    \n    已 robust 到围栏包裹（直接抓 svg 标签内容），SVG 路径 OK。TikZ/Asy 的 eval 提取器\n    在 Stage\
+    \ B 落地时同样需要 robust 到围栏（写到 stage_b checklist）。\n"
+  related_experiments:
+  - exp_id: stage_a_gen
+    role: launches
+    result: PENDING after worker dry-run
+  - exp_id: stage_a_vllm
+    role: parent
+    result: prerequisite step2 D022 done N=252
+  depends_on:
+  - D023
+  - D022
+- id: D025
+  date: 2026-04-11 07:02 UTC
+  summary: 'D025: Option I — 重建 stage_a_gen 对齐 pre-reg §3 shot regimes (0-shot + 3-shot
+    ICL)，废弃 SamplingParams n=2 方案'
+  rationale: Reviewer n_shots audit 发现 D024 的 SamplingParams n=2 与 pre-registration
+    §3 锁定的 "2 shot regimes (0-shot, 3-shot)" 完全不同：前者是每个 prompt 采样 2 条输出，后者是 0-shot
+    和 3-shot ICL prompting 两种 regime。这是根本性偏差而非参数微调。v2 数据已 quarantine（_DEPRECATED_D024_DEVIATION/），registry
+    更新为 FAILED。重建方案：(1) 准备 ICL exemplars（每格式 3 个 caption→code 示例，从 probe pool 或独立源选取，不可与
+    eval pool 重叠）；(2) 重写 stage_a_gen.py 支持 0-shot 和 3-shot 两种 prompt template；(3)
+    总生成量 = 200×3×2×3 = 3,600，与 §8 预算一致。时间充裕（~14h buffer），无需走 deviation path。
+  related_experiments:
+  - exp_id: stage_a_gen
+    role: target
+    result: FAILED (D024 deviation, quarantined)
+  depends_on:
+  - D024
+- id: D026
+  date: 2026-04-11 UTC
+  summary: 'D026: LAYERS [8,16,20,24,28,32]→[4,8,12,16,20,24,28] + silent clamp→fail-fast
+    raise + post-run pairwise row distinctness sanity + launcher svg/tikz parallel
+    asy wait + 保持 7B backbone'
+  rationale: "Reviewer CRITICAL 独立定位 v3 2268 .pt 按位损坏 (row 4==row 5, L222-228 silent\
+    \ clamp)。原 spec layer 32 > Qwen 7B n_layers=28。切 32B backbone 破坏 pre-reg §5\
+    \ 同规模受控对照且 2×RTX 96GB 装不下双模 fp16 并行。新增 pairwise distinctness sanity assertion\
+    \ 防止再现。8-item fix list: (1) LAYERS→7-layer equidistant [4,8,12,16,20,24,28];\
+    \ (2) silent clamp→fail-fast ValueError; (3) summary.json += layers_resolved +\
+    \ model_n_layers; (4) sys.stdout line_buffering; (5) HF Arrow columnar access;\
+    \ (6) launcher GPU schedule method A (svg+tikz parallel + asy wait); (7) post-run\
+    \ pairwise row distinctness sanity; (8) local mock validated 5 evidence items.\n\
+    pre_registration.md v3.3 layer-set revision amendment.\nv3 data (all 2268 .pt)\
+    \ CRITICAL data corruption — row 4 == row 5.\nBackbone unchanged: 7B × 3 models\
+    \ (pre-reg §5 controlled comparison)."
+  related_experiments:
+  - exp_id: stage_b_probe_v4
+    role: launches
+    result: 8-item Reviewer CRITICAL fix
+  - exp_id: stage_b_probe_v3
+    role: parent
+    result: DATA CORRUPTED (row 4==row 5)
+  depends_on:
+  - D025
