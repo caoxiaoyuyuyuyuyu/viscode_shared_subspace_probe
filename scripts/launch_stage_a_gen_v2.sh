@@ -9,7 +9,13 @@
 #   5. 4 offline env vars to prevent 7-min HF metadata retry per model load
 #      (× 18 launches = 2.1h waste otherwise)
 #   6. fail-fast preflight: vllm/torch import + offline patch presence + top_p absence
+#   7. source /etc/network_turbo (AutoDL gotcha): inline `git fetch origin main`
+#      requires proxy or it stalls for minutes — OFFLINE env vars do not help
+#      git/apt, only HF. Reviewer 第四轮 hard requirement.
 set -euxo pipefail
+
+# ── AutoDL proxy (required for git fetch + apt; harmless to vLLM HF path) ──
+source /etc/network_turbo
 
 PROJECT=/root/autodl-tmp/viscode_shared_subspace_probe
 LOG_DIR=$PROJECT/artifacts/stage_a/logs/gen_v2
