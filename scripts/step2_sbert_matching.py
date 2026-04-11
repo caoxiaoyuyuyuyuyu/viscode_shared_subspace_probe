@@ -27,7 +27,9 @@ SEED = 20260410
 COSINE_THRESHOLD = 0.70  # D017: hard, no degradation
 TRIPLE_TARGET = 500
 CAPTION_MAX_TOKENS = 50  # D017: truncate before embedding
-PROBE_EMBED_SAMPLE = 10_000  # per format
+PROBE_EMBED_SAMPLE_SVG = 50_000   # D022: 50k (257k full too slow)
+PROBE_EMBED_SAMPLE_TIKZ = 0      # D022: full 52k (0 = use all)
+PROBE_EMBED_SAMPLE_ASY = 0       # D022: full 22k (0 = use all)
 
 DATA_ROOT = "/root/autodl-tmp/viscode_shared_subspace_probe/data"
 VCM_PATH = f"{DATA_ROOT}/VisCode_filtered/"
@@ -204,10 +206,16 @@ def main():
         print(f"  {label}: sampled {n}/{len(items)}")
         return sampled
 
-    print("\nSampling probe pools...")
-    svg_sample = sample_probe(svg_probe, PROBE_EMBED_SAMPLE, "SVG")
-    tikz_sample = sample_probe(tikz_probe, PROBE_EMBED_SAMPLE, "TikZ")
-    asy_sample = sample_probe(asy_probe, PROBE_EMBED_SAMPLE, "Asy")
+    print("\nSampling probe pools (D022: expanded)...")
+    svg_sample = sample_probe(svg_probe, PROBE_EMBED_SAMPLE_SVG, "SVG") if PROBE_EMBED_SAMPLE_SVG > 0 else svg_probe
+    tikz_sample = sample_probe(tikz_probe, PROBE_EMBED_SAMPLE_TIKZ, "TikZ") if PROBE_EMBED_SAMPLE_TIKZ > 0 else tikz_probe
+    asy_sample = sample_probe(asy_probe, PROBE_EMBED_SAMPLE_ASY, "Asy") if PROBE_EMBED_SAMPLE_ASY > 0 else asy_probe
+    if PROBE_EMBED_SAMPLE_SVG == 0:
+        print(f"  SVG: using all {len(svg_sample)} (full)")
+    if PROBE_EMBED_SAMPLE_TIKZ == 0:
+        print(f"  TikZ: using all {len(tikz_sample)} (full)")
+    if PROBE_EMBED_SAMPLE_ASY == 0:
+        print(f"  Asy: using all {len(asy_sample)} (full)")
 
     svg_caps = [x[1] for x in svg_sample]
     tikz_caps = [x[1] for x in tikz_sample]
