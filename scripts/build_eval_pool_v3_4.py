@@ -98,7 +98,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 rng = np.random.default_rng(SEED)
 seen_hashes: set = set()
 report = {
-    "build_timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+    "build_timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     "seed": SEED,
     "source_counts": {},
     "filter_rejection_counts": {},
@@ -119,16 +119,20 @@ print(f"  VisPlotBench SVG: {len(vpb_svg)} rows")
 print(f"  VisPlotBench ASY: {len(vpb_asy)} rows")
 print(f"  DaTikZ v1 test: {len(datikz)} rows")
 
+# Pre-filter VCM by language (much faster than row-by-row)
+print("  Pre-filtering VCM by language...")
+vcm_svg_ds = vcm.filter(lambda x: x["language"] == "svg", num_proc=1)
+vcm_asy_ds = vcm.filter(lambda x: x["language"] == "asymptote", num_proc=1)
+print(f"  VCM-svg: {len(vcm_svg_ds)}, VCM-asy: {len(vcm_asy_ds)}")
+
 
 # ── Helper: filter + sample from VCM ─────────────────────────────────────────
-def filter_vcm_split(ds, language: str):
-    """Filter VCM by language, apply length + dedup filters. Returns list of (code, caption)."""
+def filter_vcm_ds(ds):
+    """Apply length + dedup filters to pre-filtered VCM split. Returns list of (code, caption)."""
     filtered = []
     rejected = 0
     for i in range(len(ds)):
         row = ds[i]
-        if row["language"] != language:
-            continue
         caption, code = extract_vcm_fields(row)
         if not passes_length_filter(code, caption):
             rejected += 1
@@ -185,7 +189,7 @@ print(f"  VisPlotBench SVG: {len(vpb_svg)} entries (all)")
 
 # VCM-SVG: filter + sample 135
 print("  Filtering VCM-svg...")
-vcm_svg_filtered, vcm_svg_rejected = filter_vcm_split(vcm, "svg")
+vcm_svg_filtered, vcm_svg_rejected = filter_vcm_ds(vcm_svg_ds)
 print(f"  VCM-svg after filter: {len(vcm_svg_filtered)} (rejected {vcm_svg_rejected})")
 vcm_svg_sampled = sample_n(vcm_svg_filtered, 135)
 for j, (code, caption) in enumerate(vcm_svg_sampled):
@@ -229,7 +233,7 @@ print(f"  VisPlotBench ASY: {len(vpb_asy)} entries (all)")
 
 # VCM-Asy: filter + sample 108
 print("  Filtering VCM-asy...")
-vcm_asy_filtered, vcm_asy_rejected = filter_vcm_split(vcm, "asymptote")
+vcm_asy_filtered, vcm_asy_rejected = filter_vcm_ds(vcm_asy_ds)
 print(f"  VCM-asy after filter: {len(vcm_asy_filtered)} (rejected {vcm_asy_rejected})")
 vcm_asy_sampled = sample_n(vcm_asy_filtered, 108)
 for j, (code, caption) in enumerate(vcm_asy_sampled):
