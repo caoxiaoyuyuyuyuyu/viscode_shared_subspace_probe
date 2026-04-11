@@ -100,6 +100,7 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
     os.environ.setdefault("VLLM_USE_V1", "0")
     os.environ.setdefault("HF_HOME", "/root/autodl-tmp/.hf_cache")
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
     from vllm import LLM, SamplingParams
 
