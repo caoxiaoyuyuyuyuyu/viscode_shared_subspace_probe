@@ -138,8 +138,8 @@ def resolve_probe_triples(triples_path, cache_path):
 
     # ── Resolve each triple ──
     resolved = []
-    for t in triples:
-        tid = t["triple_id"]
+    for i, t in enumerate(triples):
+        tid = i  # sbert_triples.json has no triple_id field; use enumerate index
 
         # SVG: svg_idx → index into svg_sampled → original dataset index
         svg_orig_idx = svg_sampled[t["svg_idx"]]
