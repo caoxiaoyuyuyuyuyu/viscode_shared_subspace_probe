@@ -105,49 +105,95 @@ def run_probe_fit(data):
 
 
 # ── C. CKA (Main Metric ρ) ────────────────────────────────────────────
-def linear_cka(X, Y):
-    """Centered Kernel Alignment with linear kernel.
-    X, Y: (n, d) arrays.
+def _center_gram(K):
+    """HSIC centering of a Gram matrix."""
+    n = K.shape[0]
+    H = np.eye(n) - 1.0 / n
+    return H @ K @ H
+
+
+def _precompute_grams(data):
+    """Pre-compute centered Gram matrices for all (model, format, layer).
+    Returns grams[model][format][layer_idx] = centered Gram (252, 252).
     """
-    n = X.shape[0]
-    # Center
-    X = X - X.mean(axis=0, keepdims=True)
-    Y = Y - Y.mean(axis=0, keepdims=True)
-    # Gram matrices
-    KX = X @ X.T
-    KY = Y @ Y.T
-    # HSIC
-    hsic_xy = np.trace(KX @ KY) / ((n - 1) ** 2)
-    hsic_xx = np.trace(KX @ KX) / ((n - 1) ** 2)
-    hsic_yy = np.trace(KY @ KY) / ((n - 1) ** 2)
+    grams = {}
+    for model in MODELS:
+        grams[model] = {}
+        for fmt in FORMATS:
+            grams[model][fmt] = {}
+            for li in range(len(LAYERS)):
+                X = data[model][fmt][:, li, :]  # (252, 3584)
+                K = X @ X.T  # (252, 252)
+                grams[model][fmt][li] = _center_gram(K)
+    return grams
+
+
+def _cka_from_grams(KX_c, KY_c):
+    """CKA from pre-centered Gram matrices using trace trick: trace(A@B) = sum(A*B)."""
+    hsic_xy = np.sum(KX_c * KY_c)
+    hsic_xx = np.sum(KX_c * KX_c)
+    hsic_yy = np.sum(KY_c * KY_c)
     denom = np.sqrt(hsic_xx * hsic_yy)
     if denom < 1e-12:
         return 0.0
     return float(hsic_xy / denom)
 
 
-def run_cka(data):
+def _cka_subsample(KX_c_full, KY_c_full, idx):
+    """CKA on a subsample given pre-centered full Gram matrices.
+    Re-centers after subsampling (centering doesn't commute with subsampling).
+    """
+    KX = KX_c_full[np.ix_(idx, idx)]
+    KY = KY_c_full[np.ix_(idx, idx)]
+    # Re-center
+    n = len(idx)
+    H = np.eye(n) - 1.0 / n
+    KX_c = H @ KX @ H
+    KY_c = H @ KY @ H
+    hsic_xy = np.sum(KX_c * KY_c)
+    hsic_xx = np.sum(KX_c * KX_c)
+    hsic_yy = np.sum(KY_c * KY_c)
+    denom = np.sqrt(hsic_xx * hsic_yy)
+    if denom < 1e-12:
+        return 0.0
+    return float(hsic_xy / denom)
+
+
+def linear_cka(X, Y):
+    """Centered Kernel Alignment with linear kernel (standalone version).
+    X, Y: (n, d) arrays.
+    """
+    n = X.shape[0]
+    X = X - X.mean(axis=0, keepdims=True)
+    Y = Y - Y.mean(axis=0, keepdims=True)
+    KX = X @ X.T
+    KY = Y @ Y.T
+    hsic_xy = np.sum(KX * KY)
+    hsic_xx = np.sum(KX * KX)
+    hsic_yy = np.sum(KY * KY)
+    denom = np.sqrt(hsic_xx * hsic_yy)
+    if denom < 1e-12:
+        return 0.0
+    return float(hsic_xy / denom)
+
+
+def run_cka(data, grams):
     """CKA for each (model, layer, format_pair)."""
     print("\n=== C. CKA Computation ===")
     t0 = time.time()
 
-    results = {}  # (model, layer, pair_str) -> cka_value
+    results = {}
     for model in MODELS:
         for li, layer in enumerate(LAYERS):
             for f1, f2 in FORMAT_PAIRS:
-                X = data[model][f1][:, li, :]  # (252, 3584)
-                Y = data[model][f2][:, li, :]
-                cka_val = linear_cka(X, Y)
-                key = (model, layer, f"{f1}-{f2}")
-                results[key] = round(cka_val, 6)
+                cka_val = _cka_from_grams(grams[model][f1][li], grams[model][f2][li])
+                results[(model, layer, f"{f1}-{f2}")] = round(cka_val, 6)
 
-            # Sanity: self-CKA should be ~1.0
-            X_svg = data[model]["svg"][:, li, :]
-            self_cka = linear_cka(X_svg, X_svg)
+            # Sanity: self-CKA
+            self_cka = _cka_from_grams(grams[model]["svg"][li], grams[model]["svg"][li])
             if abs(self_cka - 1.0) > 0.01:
                 print(f"  WARNING: self-CKA {model}/svg layer {layer} = {self_cka:.4f}")
 
-    # Print per-layer mean CKA
     for model in MODELS:
         print(f"  {model}:")
         for li, layer in enumerate(LAYERS):
@@ -160,27 +206,46 @@ def run_cka(data):
 
 
 # ── D. Bootstrap CI ───────────────────────────────────────────────────
-def run_bootstrap_ci(data):
-    """Bootstrap 95% CI for CKA per (model, layer)."""
+def run_bootstrap_ci(data, grams):
+    """Bootstrap 95% CI for CKA per (model, layer).
+    Uses pre-computed uncentered Gram matrices + re-centering per subsample.
+    """
     print(f"\n=== D. Bootstrap CI ({N_BOOTSTRAP} samples) ===")
     t0 = time.time()
 
+    # Pre-compute UNCENTERED Gram matrices for bootstrap resampling
+    raw_grams = {}
+    for model in MODELS:
+        raw_grams[model] = {}
+        for fmt in FORMATS:
+            raw_grams[model][fmt] = {}
+            for li in range(len(LAYERS)):
+                X = data[model][fmt][:, li, :]
+                raw_grams[model][fmt][li] = X @ X.T  # (252, 252)
+
     rng = np.random.RandomState(SEED)
-    results = {}  # (model, layer) -> {mean, ci_low, ci_high, per_pair: ...}
+    results = {}
 
     for model in MODELS:
         for li, layer in enumerate(LAYERS):
-            boot_means = []
-            for _ in range(N_BOOTSTRAP):
+            boot_means = np.empty(N_BOOTSTRAP)
+            for b in range(N_BOOTSTRAP):
                 idx = rng.choice(252, size=252, replace=True)
                 pair_ckas = []
+                n = len(idx)
+                H = np.eye(n) - 1.0 / n
                 for f1, f2 in FORMAT_PAIRS:
-                    X = data[model][f1][idx, li, :]
-                    Y = data[model][f2][idx, li, :]
-                    pair_ckas.append(linear_cka(X, Y))
-                boot_means.append(np.mean(pair_ckas))
+                    KX = raw_grams[model][f1][li][np.ix_(idx, idx)]
+                    KY = raw_grams[model][f2][li][np.ix_(idx, idx)]
+                    KX_c = H @ KX @ H
+                    KY_c = H @ KY @ H
+                    hsic_xy = np.sum(KX_c * KY_c)
+                    hsic_xx = np.sum(KX_c * KX_c)
+                    hsic_yy = np.sum(KY_c * KY_c)
+                    denom = np.sqrt(hsic_xx * hsic_yy)
+                    pair_ckas.append(hsic_xy / denom if denom > 1e-12 else 0.0)
+                boot_means[b] = np.mean(pair_ckas)
 
-            boot_means = np.array(boot_means)
             ci_low, ci_high = np.percentile(boot_means, [2.5, 97.5])
             mean_val = np.mean(boot_means)
             results[(model, layer)] = {
@@ -201,65 +266,93 @@ def run_a1_power_sim(data):
     """Monte Carlo power simulation for CKA detection at N=12 and N=18.
 
     For each iteration:
-    - Sample N triples from the 252 real triples
-    - Compute observed CKA (mean across format pairs and layers)
-    - Generate null CKA by permuting format labels
+    - Sample N triples (bootstrap from 252)
+    - Compute observed mean CKA (aggregated across cells)
+    - Generate null CKA by permuting triple indices
     - Record if observed > 95th percentile of null
     """
     print(f"\n=== E. A1 Power Simulation ({N_POWER_ITER} iterations) ===")
     t0 = time.time()
 
     rng = np.random.RandomState(SEED + 1)
+    n_null_per_iter = 50  # reduced from 100 for speed
     results = {}
 
-    # Models for N=12: coder + qwen25 only (no viscoder2)
-    # Models for N=18: all 3
     configs = {
-        "N12": {"n_triples": 252, "models": ["coder", "qwen25"], "n_cells": 12},
-        "N18": {"n_triples": 252, "models": MODELS, "n_cells": 18},
+        "N12": {"models": ["coder", "qwen25"], "n_cells": 12},
+        "N18": {"models": MODELS, "n_cells": 18},
     }
+
+    # Pre-compute raw Gram matrices for all models
+    raw_grams = {}
+    for model in MODELS:
+        raw_grams[model] = {}
+        for fmt in FORMATS:
+            raw_grams[model][fmt] = {}
+            for li in range(len(LAYERS)):
+                X = data[model][fmt][:, li, :]
+                raw_grams[model][fmt][li] = X @ X.T
 
     for config_name, cfg in configs.items():
         print(f"\n  {config_name} (models={cfg['models']}, cells={cfg['n_cells']}):")
         n_sig = 0
         observed_ckas = []
-        null_p_values = []
 
         for it in range(N_POWER_ITER):
-            # Sample a subset of triples
-            n_sample = min(cfg["n_triples"], 252)
-            idx = rng.choice(252, size=n_sample, replace=True)
+            idx = rng.choice(252, size=252, replace=True)
+            n = len(idx)
+            H = np.eye(n) - 1.0 / n
 
-            # Compute observed CKA across all models×layers×pairs in this config
-            obs_cka_vals = []
+            # Compute observed CKA
+            obs_vals = []
+            gram_cache = {}  # cache centered Grams for this iteration
             for model in cfg["models"]:
                 for li in range(len(LAYERS)):
                     for f1, f2 in FORMAT_PAIRS:
-                        X = data[model][f1][idx, li, :]
-                        Y = data[model][f2][idx, li, :]
-                        obs_cka_vals.append(linear_cka(X, Y))
-            obs_mean = np.mean(obs_cka_vals)
+                        # Get centered Grams (cache to reuse)
+                        key1 = (model, f1, li)
+                        if key1 not in gram_cache:
+                            K = raw_grams[model][f1][li][np.ix_(idx, idx)]
+                            gram_cache[key1] = H @ K @ H
+                        key2 = (model, f2, li)
+                        if key2 not in gram_cache:
+                            K = raw_grams[model][f2][li][np.ix_(idx, idx)]
+                            gram_cache[key2] = H @ K @ H
+                        KX_c = gram_cache[key1]
+                        KY_c = gram_cache[key2]
+                        hsic_xy = np.sum(KX_c * KY_c)
+                        hsic_xx = np.sum(KX_c * KX_c)
+                        hsic_yy = np.sum(KY_c * KY_c)
+                        denom = np.sqrt(hsic_xx * hsic_yy)
+                        obs_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
+            obs_mean = np.mean(obs_vals)
             observed_ckas.append(obs_mean)
 
-            # Null: permute format labels within each triple
+            # Null: permute sample indices
             null_ckas = []
-            for _ in range(100):  # 100 null draws per iteration
-                perm_idx = rng.permutation(n_sample)
+            for _ in range(n_null_per_iter):
+                perm = rng.permutation(n)
                 null_vals = []
                 for model in cfg["models"]:
                     for li in range(len(LAYERS)):
                         for f1, f2 in FORMAT_PAIRS:
-                            X = data[model][f1][idx, li, :]
-                            Y = data[model][f2][perm_idx, li, :]
-                            null_vals.append(linear_cka(X, Y))
+                            KX_c = gram_cache[(model, f1, li)]
+                            KY_c_perm = gram_cache[(model, f2, li)][np.ix_(perm, perm)]
+                            # Re-center after permutation of one side
+                            KY_c_perm = H @ KY_c_perm @ H
+                            hsic_xy = np.sum(KX_c * KY_c_perm)
+                            hsic_xx = np.sum(KX_c * KX_c)
+                            hsic_yy = np.sum(KY_c_perm * KY_c_perm)
+                            denom = np.sqrt(hsic_xx * hsic_yy)
+                            null_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
                 null_ckas.append(np.mean(null_vals))
 
             null_95 = np.percentile(null_ckas, 95)
             if obs_mean > null_95:
                 n_sig += 1
 
-            p_val = np.mean(np.array(null_ckas) >= obs_mean)
-            null_p_values.append(p_val)
+            if (it + 1) % 200 == 0:
+                print(f"    iter {it+1}/{N_POWER_ITER}, running power={n_sig/(it+1):.3f}")
 
         power = n_sig / N_POWER_ITER
         results[config_name] = {
@@ -267,9 +360,8 @@ def run_a1_power_sim(data):
             "n_iter": N_POWER_ITER,
             "n_cells": cfg["n_cells"],
             "mean_observed_cka": round(float(np.mean(observed_ckas)), 6),
-            "mean_null_p_value": round(float(np.mean(null_p_values)), 6),
         }
-        print(f"    power = {power:.4f}, mean_obs_CKA = {np.mean(observed_ckas):.4f}, mean_null_p = {np.mean(null_p_values):.4f}")
+        print(f"    power = {power:.4f}, mean_obs_CKA = {np.mean(observed_ckas):.4f}")
 
     elapsed = time.time() - t0
     print(f"  A1 Power Sim: {elapsed:.1f}s")
@@ -277,37 +369,60 @@ def run_a1_power_sim(data):
 
 
 # ── F. A2 Permutation Test ────────────────────────────────────────────
-def run_a2_permutation(data):
-    """Permutation test for CKA: per-model, shuffle format labels 5000 times."""
+def run_a2_permutation(data, grams):
+    """Permutation test for CKA: per-model, shuffle sample indices 5000 times.
+    Uses pre-computed raw Gram matrices for speed.
+    """
     print(f"\n=== F. A2 Permutation Test ({N_PERMUTATION} permutations) ===")
     t0 = time.time()
 
+    # Pre-compute raw Gram matrices
+    raw_grams = {}
+    for model in MODELS:
+        raw_grams[model] = {}
+        for fmt in FORMATS:
+            raw_grams[model][fmt] = {}
+            for li in range(len(LAYERS)):
+                X = data[model][fmt][:, li, :]
+                raw_grams[model][fmt][li] = X @ X.T
+
+    n = 252
+    H = np.eye(n) - 1.0 / n
     rng = np.random.RandomState(SEED + 2)
     results = {}
 
     for model in MODELS:
-        # Observed CKA: mean across layers and format pairs
+        # Pre-compute centered Grams
+        centered = {}
+        for fmt in FORMATS:
+            centered[fmt] = {}
+            for li in range(len(LAYERS)):
+                centered[fmt][li] = H @ raw_grams[model][fmt][li] @ H
+
+        # Observed CKA
         obs_vals = []
         for li in range(len(LAYERS)):
             for f1, f2 in FORMAT_PAIRS:
-                X = data[model][f1][:, li, :]
-                Y = data[model][f2][:, li, :]
-                obs_vals.append(linear_cka(X, Y))
+                obs_vals.append(_cka_from_grams(centered[f1][li], centered[f2][li]))
         obs_mean = np.mean(obs_vals)
 
-        # Null distribution: permute sample indices for one format
-        null_means = []
-        for _ in range(N_PERMUTATION):
-            perm = rng.permutation(252)
+        # Null distribution
+        null_means = np.empty(N_PERMUTATION)
+        for p_idx in range(N_PERMUTATION):
+            perm = rng.permutation(n)
             null_vals = []
             for li in range(len(LAYERS)):
                 for f1, f2 in FORMAT_PAIRS:
-                    X = data[model][f1][:, li, :]
-                    Y = data[model][f2][perm, li, :]  # permute Y samples
-                    null_vals.append(linear_cka(X, Y))
-            null_means.append(np.mean(null_vals))
+                    KX_c = centered[f1][li]
+                    # Permute Y Gram and re-center
+                    KY_perm = raw_grams[model][f2][li][np.ix_(perm, perm)]
+                    KY_c = H @ KY_perm @ H
+                    null_vals.append(_cka_from_grams(KX_c, KY_c))
+            null_means[p_idx] = np.mean(null_vals)
 
-        null_means = np.array(null_means)
+            if (p_idx + 1) % 1000 == 0:
+                print(f"    {model}: {p_idx+1}/{N_PERMUTATION} permutations done")
+
         p_value = float(np.mean(null_means >= obs_mean))
 
         results[model] = {
@@ -621,10 +736,15 @@ def main():
 
     data, triples = load_hidden_states()
     probe_results = run_probe_fit(data)
-    cka_results = run_cka(data)
-    bootstrap_results = run_bootstrap_ci(data)
+
+    print("\n  Pre-computing Gram matrices...")
+    grams = _precompute_grams(data)
+    print("  Done.")
+
+    cka_results = run_cka(data, grams)
+    bootstrap_results = run_bootstrap_ci(data, grams)
     power_results = run_a1_power_sim(data)
-    perm_results = run_a2_permutation(data)
+    perm_results = run_a2_permutation(data, grams)
     cca_results, proc_results = run_robustness(data)
 
     print("\n=== Saving outputs ===")
