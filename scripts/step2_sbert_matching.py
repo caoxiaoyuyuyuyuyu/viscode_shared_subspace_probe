@@ -224,7 +224,8 @@ def main():
     # ── SBERT embedding ────────────────────────────────────────────
     print("\nLoading SBERT model...")
     from sentence_transformers import SentenceTransformer
-    sbert = SentenceTransformer("all-MiniLM-L6-v2")
+    _sbert_local = "/root/autodl-tmp/models/all-MiniLM-L6-v2"
+    sbert = SentenceTransformer(_sbert_local if os.path.isdir(_sbert_local) else "all-MiniLM-L6-v2")
 
     print("Embedding probe captions...")
     svg_embs = sbert_embed(svg_caps, sbert)
