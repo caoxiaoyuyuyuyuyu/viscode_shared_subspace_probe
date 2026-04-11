@@ -6,6 +6,10 @@ set -euxo pipefail
 
 source /etc/network_turbo 2>/dev/null || true
 
+# ── Conda ──
+eval "$(conda shell.bash hook 2>/dev/null)" && conda activate base
+PYTHON=/root/miniconda3/bin/python
+
 # ── Env ──
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
@@ -21,7 +25,7 @@ git fetch origin && git reset --hard origin/main
 echo "=== Git synced to $(git rev-parse --short HEAD) ==="
 
 # ── Preflight ──
-python3 -c "import torch, transformers; print(f'torch={torch.__version__} transformers={transformers.__version__} cuda={torch.cuda.is_available()} gpus={torch.cuda.device_count()}')"
+$PYTHON -c "import torch, transformers; print(f'torch={torch.__version__} transformers={transformers.__version__} cuda={torch.cuda.is_available()} gpus={torch.cuda.device_count()}')"
 test -f scripts/stage_b_probe.py || { echo "FAIL: stage_b_probe.py not found"; exit 99; }
 
 TRIPLES=outputs/stage_a/sbert_triples.json
@@ -33,7 +37,7 @@ OUT_DIR=/root/autodl-tmp/cache/hidden_states
 RESOLVED="$(dirname "$TRIPLES")/resolved_triples.json"
 if [ ! -f "$RESOLVED" ]; then
     echo "=== Resolving triples ==="
-    python3 scripts/stage_b_probe.py --resolve-only \
+    $PYTHON scripts/stage_b_probe.py --resolve-only \
         --triples-path "$TRIPLES" \
         --out-dir "$OUT_DIR"
 fi
@@ -52,7 +56,7 @@ for model in $MODELS; do
     gpu_idx=0
     for fmt in $FORMATS; do
         echo "=== $model / $fmt on gpu $gpu_idx ==="
-        python3 scripts/stage_b_probe.py \
+        $PYTHON scripts/stage_b_probe.py \
             --model "$model" \
             --format "$fmt" \
             --gpu "$gpu_idx" \

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """Stage B: HF teacher-forcing probe — hidden state extraction.
 
 For each (model, format, triple), teacher-forces reference code through
