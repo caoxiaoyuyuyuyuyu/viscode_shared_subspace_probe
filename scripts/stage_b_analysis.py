@@ -93,7 +93,7 @@ def run_probe_fit(data):
             X = np.concatenate([data[model][fmt][:, li, :] for fmt in FORMATS], axis=0)
             y = np.concatenate([np.full(252, i) for i, _ in enumerate(FORMATS)])
 
-            clf = LogisticRegression(max_iter=2000, solver="lbfgs", multi_class="multinomial", random_state=SEED)
+            clf = LogisticRegression(max_iter=2000, solver="lbfgs", random_state=SEED)
             scores = cross_val_score(clf, X, y, cv=5, scoring="accuracy")
             acc = scores.mean()
             results[model][layer] = round(float(acc), 4)
