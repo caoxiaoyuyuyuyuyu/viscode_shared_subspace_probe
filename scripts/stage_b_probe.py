@@ -108,12 +108,7 @@ def resolve_probe_triples(triples_path, cache_path):
 
     # ── TikZ: DaTikZ v2 train (no sampling — PROBE_EMBED_SAMPLE_TIKZ=0) ──
     print("[resolve] Loading DaTikZ v2 train...")
-    if os.path.exists(DATIKZ_V2_PATH):
-        tikz_ds = datasets.load_from_disk(DATIKZ_V2_PATH)
-        if isinstance(tikz_ds, datasets.DatasetDict):
-            tikz_ds = tikz_ds["train"]
-    else:
-        raise RuntimeError(f"DaTikZ v2 not found at {DATIKZ_V2_PATH}; offline mode")
+    tikz_ds = datasets.load_dataset("nllg/datikz-v2", split="train")
     tikz_valid_indices = []
     for i in range(len(tikz_ds)):
         cap = tikz_ds[i].get("caption", "")
