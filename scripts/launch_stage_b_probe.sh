@@ -7,7 +7,7 @@ set -euxo pipefail
 source /etc/network_turbo 2>/dev/null || true
 
 # ── Conda ──
-eval "$(conda shell.bash hook 2>/dev/null)" && conda activate base
+source /root/miniconda3/etc/profile.d/conda.sh && conda activate base
 PYTHON=/root/miniconda3/bin/python
 
 # ── Env ──
