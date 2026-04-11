@@ -9,10 +9,15 @@ Follows pre_registration_v3_4_skeleton.md §3 locked spec:
   - Asy  = VisPlotBench asy 92 (all) + VCM-asy 108 (random sample after filter)
 
 Filter rules (applied to code-having sources: VCM, DaTikZ):
-  1. code length ∈ [50, 2000]
-  2. caption length ∈ [10, 300]
+  1. code length ∈ [50, 8000]  (D020+D021)
+  2. caption length ∈ [10, 3000]  (D021: VCM stores detailed instructions as captions)
   3. hash dedup (sha256 of code)
   4. seed = 20260410
+
+VCM code extraction (D020): assistant content → pure code block
+  - SVG: <svg>...</svg> tag
+  - TikZ: \\begin{tikzpicture}...\\end{tikzpicture} or \\begin{document}...\\end{document}
+  - Asy: markdown code fence or import-to-end heuristic
 
 VisPlotBench entries are prompt-only (no reference code); included as-is per "全用" spec.
 """
@@ -52,7 +57,7 @@ def file_sha256(path: str) -> str:
 
 
 def passes_length_filter(code: str, caption: str) -> bool:
-    return 50 <= len(code) <= 2000 and 10 <= len(caption) <= 300
+    return 50 <= len(code) <= 8000 and 10 <= len(caption) <= 3000
 
 
 def make_entry(id_str: str, fmt: str, source: str, code: str, caption: str) -> dict:
@@ -68,16 +73,55 @@ def make_entry(id_str: str, fmt: str, source: str, code: str, caption: str) -> d
     }
 
 
+def extract_code_block(content: str, language: str) -> str:
+    """Extract pure code block from assistant response based on format.
+
+    SVG: <svg>...</svg>
+    TikZ: \\begin{tikzpicture}...\\end{tikzpicture} or \\begin{document}...\\end{document}
+    Asy: markdown code fence content, or import-to-end heuristic
+    Fallback: raw content
+    """
+    import re
+    if language == "svg":
+        m = re.search(r'(<svg[\s\S]*?</svg>)', content)
+        if m:
+            return m.group(1)
+    elif language in ("latex", "tikz"):
+        # Try tikzpicture first, then document
+        m = re.search(r'(\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\})', content)
+        if m:
+            return m.group(1)
+        m = re.search(r'(\\begin\{document\}[\s\S]*?\\end\{document\})', content)
+        if m:
+            return m.group(1)
+    elif language == "asymptote":
+        # Try markdown code fence first
+        m = re.search(r'```(?:asy|asymptote)?\n([\s\S]*?)```', content)
+        if m:
+            return m.group(1).strip()
+        # Heuristic: import statement to end of meaningful code
+        m = re.search(r'((?:import|size|draw|fill|label|pair|path|real)\b[\s\S]*)', content)
+        if m:
+            return m.group(1).strip()
+    # Fallback: raw content
+    return content
+
+
 def extract_vcm_fields(row: dict) -> tuple:
-    """Extract (caption, code) from VCM messages format."""
+    """Extract (caption, code) from VCM messages format.
+
+    code = pure code block extracted from assistant response
+    caption = full user message (VCM stores detailed instructions as captions)
+    """
     msgs = row["messages"]
+    language = row.get("language", "")
     caption = ""
     code = ""
     for m in msgs:
         if m["role"] == "user":
             caption = m["content"]
         elif m["role"] == "assistant":
-            code = m["content"]
+            code = extract_code_block(m["content"], language)
     return caption, code
 
 
