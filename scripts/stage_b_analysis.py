@@ -9,11 +9,20 @@ Pre-reg v3.3 + D026 amendment compliant:
   - Main metric: CKA (ρ), CCA/procrustes as robustness
 
 Usage:
+  # Production (server):
   export PATH=/root/miniconda3/bin:$PATH
   cd /root/autodl-tmp/viscode_shared_subspace_probe
   python scripts/stage_b_analysis.py
+
+  # Smoke test (local, no GPU needed):
+  python scripts/stage_b_analysis.py --smoke
+
+  # Force rerun (ignore checkpoints):
+  python scripts/stage_b_analysis.py --smoke --force-rerun
 """
 
+import argparse
+import gc
 import json
 import os
 import sys
@@ -21,6 +30,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import psutil
 import torch
 from scipy import stats
 from sklearn.linear_model import LogisticRegression
@@ -28,212 +38,216 @@ from sklearn.model_selection import cross_val_score
 
 sys.stdout.reconfigure(line_buffering=True)
 
-# ── Config ─────────────────────────────────────────────────────────────
+# ── Constants ─────────────────────────────────────────────────────────
 LAYERS = [4, 8, 12, 16, 20, 24, 28]
 MODELS = ["coder", "viscoder2", "qwen25"]
 FORMATS = ["svg", "tikz", "asy"]
 FORMAT_PAIRS = [("svg", "tikz"), ("svg", "asy"), ("tikz", "asy")]
-
-CACHE_DIR = Path("/root/autodl-tmp/cache/hidden_states")
-TRIPLES_PATH = Path("/root/autodl-tmp/viscode_shared_subspace_probe/outputs/stage_a/sbert_triples.json")
-OUT_DIR = Path("/root/autodl-tmp/viscode_shared_subspace_probe/artifacts/stage_b_analysis_v1")
-FIG_DIR = OUT_DIR / "figures"
-
-N_BOOTSTRAP = 1000
-N_PERMUTATION = 5000
-N_POWER_ITER = 1000
 SEED = 42
 
-np.random.seed(SEED)
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
 
 
-# ── A. Data Loader ─────────────────────────────────────────────────────
-def load_hidden_states():
-    """Load all hidden states into data[model][format] = np.array(252, 7, 3584)."""
-    print("=== A. Loading hidden states ===")
+# ── Helpers ───────────────────────────────────────────────────────────
+def mem_gb():
+    """Current RSS in GB."""
+    return psutil.Process().memory_info().rss / 1024**3
+
+
+def _save_ckpt(path, obj):
+    """Atomic JSON checkpoint write with fsync."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    tmp.rename(path)
+
+
+def _load_ckpt(path):
+    with open(path) as f:
+        return json.load(f)
+
+
+# ── Smoke Data Generation ────────────────────────────────────────────
+def generate_smoke_data(cache_dir, n_triples):
+    """Generate fake .pt files for local smoke testing."""
+    rng = np.random.RandomState(SEED + 99)
+    any_created = False
+    for model in MODELS:
+        for fmt in FORMATS:
+            d = cache_dir / model / fmt
+            d.mkdir(parents=True, exist_ok=True)
+            for i in range(n_triples):
+                pt_path = d / f"{i}.pt"
+                if not pt_path.exists():
+                    t = torch.tensor(rng.randn(len(LAYERS), 3584).astype(np.float32))
+                    torch.save(t, pt_path)
+                    any_created = True
+    if any_created:
+        print(f"  Generated fake .pt data in {cache_dir}")
+
+
+# ── A. Data Loader ───────────────────────────────────────────────────
+def load_hidden_states(cache_dir, n_triples):
+    """Load hidden states into data[model][format] = np.array(n, 7, 3584) float32."""
+    print(f"=== A. Loading hidden states === (RSS={mem_gb():.2f} GB)")
     t0 = time.time()
 
-    with open(TRIPLES_PATH) as f:
-        triples = json.load(f)
-    n_triples = len(triples)
-    print(f"  sbert_triples.json: {n_triples} triples")
-    assert n_triples == 252, f"Expected 252 triples, got {n_triples}"
-
     data = {}
+    detected_dtype = None
     for model in MODELS:
         data[model] = {}
         for fmt in FORMATS:
             tensors = []
-            d = CACHE_DIR / model / fmt
+            d = cache_dir / model / fmt
             for i in range(n_triples):
                 pt_path = d / f"{i}.pt"
                 t = torch.load(pt_path, map_location="cpu", weights_only=True)
-                assert t.shape == (7, 3584), f"{pt_path}: shape {t.shape}"
-                tensors.append(t.numpy())
-            arr = np.stack(tensors, axis=0)  # (252, 7, 3584)
+                assert t.shape == (len(LAYERS), 3584), f"{pt_path}: shape {t.shape}"
+                if detected_dtype is None:
+                    detected_dtype = str(t.dtype)
+                # Enforce float32 — avoid float64 blowup
+                tensors.append(t.float().numpy())
+            arr = np.stack(tensors, axis=0)  # (n, 7, 3584) float32
+            assert arr.dtype == np.float32
             data[model][fmt] = arr
-            print(f"  {model}/{fmt}: {arr.shape}")
+            print(f"  {model}/{fmt}: {arr.shape} {arr.dtype}")
 
     elapsed = time.time() - t0
-    print(f"  Data loading: {elapsed:.1f}s")
-    return data, triples
+    print(f"  Data loading: {elapsed:.1f}s (RSS={mem_gb():.2f} GB)")
+    return data, detected_dtype, elapsed
 
 
-# ── B. Probe Fit (Format Classifier) ──────────────────────────────────
-def run_probe_fit(data):
-    """Per-model, per-layer format classification (5-fold CV LogReg)."""
-    print("\n=== B. Probe Fit (Format Classifier) ===")
-    t0 = time.time()
-
-    results = {}  # model -> layer_idx -> accuracy
-    for model in MODELS:
-        results[model] = {}
-        for li, layer in enumerate(LAYERS):
-            # Stack all 3 formats: (756, 3584)
-            X = np.concatenate([data[model][fmt][:, li, :] for fmt in FORMATS], axis=0)
-            y = np.concatenate([np.full(252, i) for i, _ in enumerate(FORMATS)])
-
-            clf = LogisticRegression(max_iter=2000, solver="lbfgs", random_state=SEED)
-            scores = cross_val_score(clf, X, y, cv=5, scoring="accuracy")
-            acc = scores.mean()
-            results[model][layer] = round(float(acc), 4)
-            print(f"  {model} layer {layer}: acc={acc:.4f} (±{scores.std():.4f})")
-
-    elapsed = time.time() - t0
-    print(f"  Probe fit: {elapsed:.1f}s")
-    return results
-
-
-# ── C. CKA (Main Metric ρ) ────────────────────────────────────────────
-def _center_gram(K):
-    """HSIC centering of a Gram matrix."""
-    n = K.shape[0]
-    H = np.eye(n) - 1.0 / n
-    return H @ K @ H
-
-
-def _precompute_grams(data):
-    """Pre-compute centered Gram matrices for all (model, format, layer).
-    Returns grams[model][format][layer_idx] = centered Gram (252, 252).
-    """
-    grams = {}
-    for model in MODELS:
-        grams[model] = {}
-        for fmt in FORMATS:
-            grams[model][fmt] = {}
-            for li in range(len(LAYERS)):
-                X = data[model][fmt][:, li, :]  # (252, 3584)
-                K = X @ X.T  # (252, 252)
-                grams[model][fmt][li] = _center_gram(K)
-    return grams
-
-
-def _cka_from_grams(KX_c, KY_c):
-    """CKA from pre-centered Gram matrices using trace trick: trace(A@B) = sum(A*B)."""
-    hsic_xy = np.sum(KX_c * KY_c)
-    hsic_xx = np.sum(KX_c * KX_c)
-    hsic_yy = np.sum(KY_c * KY_c)
-    denom = np.sqrt(hsic_xx * hsic_yy)
-    if denom < 1e-12:
-        return 0.0
-    return float(hsic_xy / denom)
-
-
-def _cka_subsample(KX_c_full, KY_c_full, idx):
-    """CKA on a subsample given pre-centered full Gram matrices.
-    Re-centers after subsampling (centering doesn't commute with subsampling).
-    """
-    KX = KX_c_full[np.ix_(idx, idx)]
-    KY = KY_c_full[np.ix_(idx, idx)]
-    # Re-center
-    n = len(idx)
-    H = np.eye(n) - 1.0 / n
-    KX_c = H @ KX @ H
-    KY_c = H @ KY @ H
-    hsic_xy = np.sum(KX_c * KY_c)
-    hsic_xx = np.sum(KX_c * KX_c)
-    hsic_yy = np.sum(KY_c * KY_c)
-    denom = np.sqrt(hsic_xx * hsic_yy)
-    if denom < 1e-12:
-        return 0.0
-    return float(hsic_xy / denom)
-
-
-def linear_cka(X, Y):
-    """Centered Kernel Alignment with linear kernel (standalone version).
-    X, Y: (n, d) arrays.
-    """
-    n = X.shape[0]
-    X = X - X.mean(axis=0, keepdims=True)
-    Y = Y - Y.mean(axis=0, keepdims=True)
-    KX = X @ X.T
-    KY = Y @ Y.T
-    hsic_xy = np.sum(KX * KY)
-    hsic_xx = np.sum(KX * KX)
-    hsic_yy = np.sum(KY * KY)
-    denom = np.sqrt(hsic_xx * hsic_yy)
-    if denom < 1e-12:
-        return 0.0
-    return float(hsic_xy / denom)
-
-
-def run_cka(data, grams):
-    """CKA for each (model, layer, format_pair)."""
-    print("\n=== C. CKA Computation ===")
-    t0 = time.time()
-
-    results = {}
-    for model in MODELS:
-        for li, layer in enumerate(LAYERS):
-            for f1, f2 in FORMAT_PAIRS:
-                cka_val = _cka_from_grams(grams[model][f1][li], grams[model][f2][li])
-                results[(model, layer, f"{f1}-{f2}")] = round(cka_val, 6)
-
-            # Sanity: self-CKA
-            self_cka = _cka_from_grams(grams[model]["svg"][li], grams[model]["svg"][li])
-            if abs(self_cka - 1.0) > 0.01:
-                print(f"  WARNING: self-CKA {model}/svg layer {layer} = {self_cka:.4f}")
-
-    for model in MODELS:
-        print(f"  {model}:")
-        for li, layer in enumerate(LAYERS):
-            vals = [results[(model, layer, f"{f1}-{f2}")] for f1, f2 in FORMAT_PAIRS]
-            print(f"    layer {layer}: mean CKA = {np.mean(vals):.4f} ({vals})")
-
-    elapsed = time.time() - t0
-    print(f"  CKA: {elapsed:.1f}s")
-    return results
-
-
-# ── D. Bootstrap CI ───────────────────────────────────────────────────
-def run_bootstrap_ci(data, grams):
-    """Bootstrap 95% CI for CKA per (model, layer).
-    Uses pre-computed uncentered Gram matrices + re-centering per subsample.
-    """
-    print(f"\n=== D. Bootstrap CI ({N_BOOTSTRAP} samples) ===")
-    t0 = time.time()
-
-    # Pre-compute UNCENTERED Gram matrices for bootstrap resampling
+# ── Raw Gram Matrices (shared by C/D/E/F) ────────────────────────────
+def compute_raw_grams(data):
+    """Compute uncentered Gram matrices: raw_grams[model][fmt][li] = (n,n) float32."""
+    print(f"  Computing raw Gram matrices... (RSS={mem_gb():.2f} GB)")
     raw_grams = {}
     for model in MODELS:
         raw_grams[model] = {}
         for fmt in FORMATS:
             raw_grams[model][fmt] = {}
             for li in range(len(LAYERS)):
-                X = data[model][fmt][:, li, :]
-                raw_grams[model][fmt][li] = X @ X.T  # (252, 252)
+                X = data[model][fmt][:, li, :]  # (n, 3584) float32
+                raw_grams[model][fmt][li] = X @ X.T  # (n, n) float32
+    print(f"  Raw Gram matrices done. (RSS={mem_gb():.2f} GB)")
+    return raw_grams
 
+
+# ── B. Probe Fit (Format Classifier) ────────────────────────────────
+def run_probe_fit(data, n_triples):
+    """Per-model, per-layer format classification (5-fold CV LogReg)."""
+    print(f"\n=== B. Probe Fit (Format Classifier) === (RSS={mem_gb():.2f} GB)")
+    t0 = time.time()
+
+    rows = []
+    for model in MODELS:
+        for li, layer in enumerate(LAYERS):
+            X = np.concatenate([data[model][fmt][:, li, :] for fmt in FORMATS], axis=0)
+            y = np.concatenate([np.full(n_triples, i) for i, _ in enumerate(FORMATS)])
+
+            clf = LogisticRegression(max_iter=2000, solver="lbfgs", random_state=SEED)
+            scores = cross_val_score(clf, X, y, cv=5, scoring="accuracy")
+            acc = float(scores.mean())
+            n_total = len(y)
+            n_test = n_total // 5
+            n_train = n_total - n_test
+            rows.append({
+                "model": model, "layer": layer, "accuracy": round(acc, 4),
+                "std": round(float(scores.std()), 4),
+                "n_train": n_train, "n_test": n_test,
+                "split_strategy": "5-fold-cv",
+            })
+            print(f"  {model} layer {layer}: acc={acc:.4f} (±{scores.std():.4f})")
+            del X, y, clf, scores
+    gc.collect()
+
+    elapsed = time.time() - t0
+    print(f"  Probe fit: {elapsed:.1f}s (RSS={mem_gb():.2f} GB)")
+    return {"results": rows, "elapsed_s": round(elapsed, 1)}
+
+
+# ── C. CKA (Main Metric ρ) ──────────────────────────────────────────
+def _center_gram_f32(K):
+    """HSIC centering of a Gram matrix, float32."""
+    n = K.shape[0]
+    H = np.eye(n, dtype=np.float32) - np.float32(1.0 / n)
+    return H @ K @ H
+
+
+def _cka_from_centered(KX_c, KY_c):
+    """CKA from pre-centered Gram matrices using trace trick."""
+    hsic_xy = np.sum(KX_c * KY_c)
+    hsic_xx = np.sum(KX_c * KX_c)
+    hsic_yy = np.sum(KY_c * KY_c)
+    denom = np.sqrt(hsic_xx * hsic_yy)
+    if denom < 1e-12:
+        return 0.0
+    return float(hsic_xy / denom)
+
+
+def run_cka(raw_grams):
+    """CKA for each (model, layer, format_pair)."""
+    print(f"\n=== C. CKA Computation === (RSS={mem_gb():.2f} GB)")
+    t0 = time.time()
+
+    rows = []
+    for model in MODELS:
+        for li, layer in enumerate(LAYERS):
+            # Center Gram matrices on the fly
+            centered = {}
+            for fmt in FORMATS:
+                centered[fmt] = _center_gram_f32(raw_grams[model][fmt][li])
+
+            pair_vals = []
+            for f1, f2 in FORMAT_PAIRS:
+                cka_val = _cka_from_centered(centered[f1], centered[f2])
+                rows.append({
+                    "model": model, "layer": layer,
+                    "pair": f"{f1}-{f2}", "cka": round(cka_val, 6),
+                })
+                pair_vals.append(cka_val)
+
+            # Sanity: self-CKA
+            self_cka = _cka_from_centered(centered["svg"], centered["svg"])
+            if abs(self_cka - 1.0) > 0.01:
+                print(f"  WARNING: self-CKA {model}/svg layer {layer} = {self_cka:.4f}")
+
+            del centered
+        gc.collect()
+
+    for model in MODELS:
+        print(f"  {model}:")
+        for li, layer in enumerate(LAYERS):
+            vals = [r["cka"] for r in rows
+                    if r["model"] == model and r["layer"] == layer]
+            print(f"    layer {layer}: mean CKA = {np.mean(vals):.4f} ({vals})")
+
+    elapsed = time.time() - t0
+    print(f"  CKA: {elapsed:.1f}s (RSS={mem_gb():.2f} GB)")
+    return {"results": rows, "elapsed_s": round(elapsed, 1)}
+
+
+# ── D. Bootstrap CI ─────────────────────────────────────────────────
+def run_bootstrap_ci(raw_grams, n_triples, n_bootstrap):
+    """Bootstrap 95% CI for CKA per (model, layer)."""
+    print(f"\n=== D. Bootstrap CI ({n_bootstrap} samples) === (RSS={mem_gb():.2f} GB)")
+    t0 = time.time()
+
+    n = n_triples
+    H = np.eye(n, dtype=np.float32) - np.float32(1.0 / n)
     rng = np.random.RandomState(SEED)
-    results = {}
+    rows = []
 
     for model in MODELS:
         for li, layer in enumerate(LAYERS):
-            boot_means = np.empty(N_BOOTSTRAP)
-            for b in range(N_BOOTSTRAP):
-                idx = rng.choice(252, size=252, replace=True)
+            boot_means = np.empty(n_bootstrap, dtype=np.float32)
+            for b in range(n_bootstrap):
+                idx = rng.choice(n, size=n, replace=True)
                 pair_ckas = []
-                n = len(idx)
-                H = np.eye(n) - 1.0 / n
                 for f1, f2 in FORMAT_PAIRS:
                     KX = raw_grams[model][f1][li][np.ix_(idx, idx)]
                     KY = raw_grams[model][f2][li][np.ix_(idx, idx)]
@@ -244,41 +258,42 @@ def run_bootstrap_ci(data, grams):
                     hsic_yy = np.sum(KY_c * KY_c)
                     denom = np.sqrt(hsic_xx * hsic_yy)
                     pair_ckas.append(hsic_xy / denom if denom > 1e-12 else 0.0)
+                    del KX, KY, KX_c, KY_c
                 boot_means[b] = np.mean(pair_ckas)
 
+                if (b + 1) % 100 == 0:
+                    print(f"    {model} L{layer}: {b+1}/{n_bootstrap} (RSS={mem_gb():.2f} GB)")
+
             ci_low, ci_high = np.percentile(boot_means, [2.5, 97.5])
-            mean_val = np.mean(boot_means)
-            results[(model, layer)] = {
-                "mean": round(float(mean_val), 6),
+            mean_val = float(np.mean(boot_means))
+            se_val = float(np.std(boot_means))
+            rows.append({
+                "model": model, "layer": layer,
+                "mean": round(mean_val, 6),
                 "ci_low": round(float(ci_low), 6),
                 "ci_high": round(float(ci_high), 6),
                 "ci_width": round(float(ci_high - ci_low), 6),
-            }
+                "se": round(se_val, 6),
+            })
             print(f"  {model} layer {layer}: {mean_val:.4f} [{ci_low:.4f}, {ci_high:.4f}] (w={ci_high-ci_low:.4f})")
+            del boot_means
+            gc.collect()
 
     elapsed = time.time() - t0
-    print(f"  Bootstrap CI: {elapsed:.1f}s")
-    return results
+    print(f"  Bootstrap CI: {elapsed:.1f}s (RSS={mem_gb():.2f} GB)")
+    return {"results": rows, "n_bootstrap": n_bootstrap, "elapsed_s": round(elapsed, 1)}
 
 
-# ── E. A1 Power Simulation ────────────────────────────────────────────
-def run_a1_power_sim(data):
-    """Monte Carlo power simulation for CKA detection at N=12 and N=18.
-
-    Strategy: for each of 1000 bootstrap samples of triples, compute the
-    aggregate CKA statistic. Then test against a null distribution built
-    from 500 permutations of the full dataset. Power = fraction of bootstrap
-    samples where observed CKA > null 95th percentile.
-
-    Uses layer 24 (penultimate) as representative layer to keep compute tractable.
-    """
-    print(f"\n=== E. A1 Power Simulation ({N_POWER_ITER} iterations) ===")
+# ── E. A1 Power Simulation ──────────────────────────────────────────
+def run_a1_power_sim(raw_grams, n_triples, n_power_iter):
+    """Monte Carlo power simulation for CKA detection at N=12 and N=18."""
+    print(f"\n=== E. A1 Power Simulation ({n_power_iter} iterations) === (RSS={mem_gb():.2f} GB)")
     t0 = time.time()
 
     rng = np.random.RandomState(SEED + 1)
     rep_layer_idx = 5  # layer 24 = index 5
-    n = 252
-    H = np.eye(n) - 1.0 / n
+    n = n_triples
+    H = np.eye(n, dtype=np.float32) - np.float32(1.0 / n)
     results = {}
 
     configs = {
@@ -286,52 +301,45 @@ def run_a1_power_sim(data):
         "N18": {"models": MODELS, "n_cells": 18},
     }
 
-    # Pre-compute raw Gram matrices at representative layer only
-    raw_grams = {}
-    for model in MODELS:
-        raw_grams[model] = {}
-        for fmt in FORMATS:
-            X = data[model][fmt][:, rep_layer_idx, :]
-            raw_grams[model][fmt] = X @ X.T
-
     for config_name, cfg in configs.items():
         print(f"\n  {config_name} (models={cfg['models']}, cells={cfg['n_cells']}):")
 
-        # Step 1: Build null distribution (500 permutations on full data)
-        n_null = 500
-        null_dist = np.empty(n_null)
-        # Pre-compute centered Grams
+        # Pre-compute centered Grams at representative layer
         centered = {}
         for model in cfg["models"]:
             centered[model] = {}
             for fmt in FORMATS:
-                centered[model][fmt] = H @ raw_grams[model][fmt] @ H
+                centered[model][fmt] = H @ raw_grams[model][fmt][rep_layer_idx] @ H
 
+        # Step 1: Null distribution (500 permutations)
+        n_null = 500
+        null_dist = np.empty(n_null, dtype=np.float32)
         for p_idx in range(n_null):
             perm = rng.permutation(n)
             null_vals = []
             for model in cfg["models"]:
                 for f1, f2 in FORMAT_PAIRS:
                     KX_c = centered[model][f1]
-                    KY_perm = raw_grams[model][f2][np.ix_(perm, perm)]
+                    KY_perm = raw_grams[model][f2][rep_layer_idx][np.ix_(perm, perm)]
                     KY_c = H @ KY_perm @ H
-                    null_vals.append(_cka_from_grams(KX_c, KY_c))
+                    null_vals.append(_cka_from_centered(KX_c, KY_c))
+                    del KY_perm, KY_c
             null_dist[p_idx] = np.mean(null_vals)
-        null_95 = np.percentile(null_dist, 95)
+        null_95 = float(np.percentile(null_dist, 95))
         print(f"    Null distribution: mean={np.mean(null_dist):.4f}, 95th={null_95:.4f}")
 
-        # Step 2: Bootstrap power — resample triples and compute observed CKA
+        # Step 2: Bootstrap power
         n_sig = 0
-        observed_ckas = np.empty(N_POWER_ITER)
-        for it in range(N_POWER_ITER):
+        observed_ckas = np.empty(n_power_iter, dtype=np.float32)
+        for it in range(n_power_iter):
             idx = rng.choice(n, size=n, replace=True)
             obs_vals = []
+            n_b = len(idx)
+            Hb = np.eye(n_b, dtype=np.float32) - np.float32(1.0 / n_b)
             for model in cfg["models"]:
                 for f1, f2 in FORMAT_PAIRS:
-                    KX = raw_grams[model][f1][np.ix_(idx, idx)]
-                    KY = raw_grams[model][f2][np.ix_(idx, idx)]
-                    n_b = len(idx)
-                    Hb = np.eye(n_b) - 1.0 / n_b
+                    KX = raw_grams[model][f1][rep_layer_idx][np.ix_(idx, idx)]
+                    KY = raw_grams[model][f2][rep_layer_idx][np.ix_(idx, idx)]
                     KX_c = Hb @ KX @ Hb
                     KY_c = Hb @ KY @ Hb
                     hsic_xy = np.sum(KX_c * KY_c)
@@ -339,17 +347,18 @@ def run_a1_power_sim(data):
                     hsic_yy = np.sum(KY_c * KY_c)
                     denom = np.sqrt(hsic_xx * hsic_yy)
                     obs_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
-            obs_mean = np.mean(obs_vals)
+                    del KX, KY, KX_c, KY_c
+            obs_mean = float(np.mean(obs_vals))
             observed_ckas[it] = obs_mean
             if obs_mean > null_95:
                 n_sig += 1
             if (it + 1) % 200 == 0:
-                print(f"    iter {it+1}/{N_POWER_ITER}, running power={n_sig/(it+1):.3f}")
+                print(f"    iter {it+1}/{n_power_iter}, running power={n_sig/(it+1):.3f} (RSS={mem_gb():.2f} GB)")
 
-        power = n_sig / N_POWER_ITER
+        power = n_sig / n_power_iter
         results[config_name] = {
             "power": round(power, 4),
-            "n_iter": N_POWER_ITER,
+            "n_iter": n_power_iter,
             "n_null": n_null,
             "n_cells": cfg["n_cells"],
             "representative_layer": LAYERS[rep_layer_idx],
@@ -358,34 +367,23 @@ def run_a1_power_sim(data):
             "null_mean": round(float(np.mean(null_dist)), 6),
         }
         print(f"    power = {power:.4f}, mean_obs_CKA = {np.mean(observed_ckas):.4f}")
+        del centered, null_dist, observed_ckas
+        gc.collect()
 
     elapsed = time.time() - t0
-    print(f"  A1 Power Sim: {elapsed:.1f}s")
+    print(f"  A1 Power Sim: {elapsed:.1f}s (RSS={mem_gb():.2f} GB)")
+    results["elapsed_s"] = round(elapsed, 1)
     return results
 
 
-# ── F. A2 Permutation Test ────────────────────────────────────────────
-def run_a2_permutation(data, grams):
-    """Permutation test for CKA: per-model, shuffle sample indices.
-    Uses pre-computed raw Gram matrices for speed.
-    Reduced to 2000 permutations (sufficient for p-value resolution to 0.0005).
-    """
-    n_perm = 2000
-    print(f"\n=== F. A2 Permutation Test ({n_perm} permutations) ===")
+# ── F. A2 Permutation Test ───────────────────────────────────────────
+def run_a2_permutation(raw_grams, n_triples, n_perm):
+    """Permutation test for CKA: per-model, shuffle sample indices."""
+    print(f"\n=== F. A2 Permutation Test ({n_perm} permutations) === (RSS={mem_gb():.2f} GB)")
     t0 = time.time()
 
-    # Pre-compute raw Gram matrices
-    raw_grams = {}
-    for model in MODELS:
-        raw_grams[model] = {}
-        for fmt in FORMATS:
-            raw_grams[model][fmt] = {}
-            for li in range(len(LAYERS)):
-                X = data[model][fmt][:, li, :]
-                raw_grams[model][fmt][li] = X @ X.T
-
-    n = 252
-    H = np.eye(n) - 1.0 / n
+    n = n_triples
+    H = np.eye(n, dtype=np.float32) - np.float32(1.0 / n)
     rng = np.random.RandomState(SEED + 2)
     results = {}
 
@@ -397,7 +395,7 @@ def run_a2_permutation(data, grams):
             for li in range(len(LAYERS)):
                 centered[fmt][li] = H @ raw_grams[model][fmt][li] @ H
 
-        # Pre-compute HSIC_xx for each (fmt, li) — these don't change under permutation
+        # Pre-compute HSIC_xx (invariant under permutation of Y)
         hsic_xx_cache = {}
         for fmt in FORMATS:
             for li in range(len(LAYERS)):
@@ -407,11 +405,11 @@ def run_a2_permutation(data, grams):
         obs_vals = []
         for li in range(len(LAYERS)):
             for f1, f2 in FORMAT_PAIRS:
-                obs_vals.append(_cka_from_grams(centered[f1][li], centered[f2][li]))
-        obs_mean = np.mean(obs_vals)
+                obs_vals.append(_cka_from_centered(centered[f1][li], centered[f2][li]))
+        obs_mean = float(np.mean(obs_vals))
 
         # Null distribution
-        null_means = np.empty(n_perm)
+        null_means = np.empty(n_perm, dtype=np.float32)
         for p_idx in range(n_perm):
             perm = rng.permutation(n)
             null_vals = []
@@ -424,13 +422,13 @@ def run_a2_permutation(data, grams):
                     hsic_yy = np.sum(KY_c * KY_c)
                     denom = np.sqrt(hsic_xx_cache[(f1, li)] * hsic_yy)
                     null_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
+                    del KY_perm, KY_c
             null_means[p_idx] = np.mean(null_vals)
 
             if (p_idx + 1) % 500 == 0:
-                print(f"    {model}: {p_idx+1}/{n_perm} permutations done")
+                print(f"    {model}: {p_idx+1}/{n_perm} permutations (RSS={mem_gb():.2f} GB)")
 
         p_value = float(np.mean(null_means >= obs_mean))
-
         results[model] = {
             "observed_cka_mean": round(float(obs_mean), 6),
             "null_mean": round(float(np.mean(null_means)), 6),
@@ -441,13 +439,16 @@ def run_a2_permutation(data, grams):
             "n_permutations": n_perm,
         }
         print(f"  {model}: obs={obs_mean:.4f}, null_mean={np.mean(null_means):.4f}, p={p_value:.6f}")
+        del centered, hsic_xx_cache, null_means
+        gc.collect()
 
     elapsed = time.time() - t0
-    print(f"  A2 Permutation: {elapsed:.1f}s")
+    print(f"  A2 Permutation: {elapsed:.1f}s (RSS={mem_gb():.2f} GB)")
+    results["elapsed_s"] = round(elapsed, 1)
     return results
 
 
-# ── Robustness: CCA + Procrustes ──────────────────────────────────────
+# ── Robustness: CCA + Procrustes ────────────────────────────────────
 def cca_score(X, Y, n_components=10):
     """Mean canonical correlation (top-k)."""
     from sklearn.cross_decomposition import CCA
@@ -464,7 +465,6 @@ def cca_score(X, Y, n_components=10):
 def procrustes_score(X, Y):
     """1 - Procrustes disparity (higher = more similar)."""
     from scipy.spatial import procrustes as sp_procrustes
-    # Reduce dims for stability
     from sklearn.decomposition import PCA
     k = min(50, X.shape[0] - 1, X.shape[1])
     pca = PCA(n_components=k, random_state=SEED)
@@ -476,11 +476,11 @@ def procrustes_score(X, Y):
 
 def run_robustness(data):
     """CCA and Procrustes as robustness checks."""
-    print("\n=== Robustness: CCA + Procrustes ===")
+    print(f"\n=== Robustness: CCA + Procrustes === (RSS={mem_gb():.2f} GB)")
     t0 = time.time()
 
-    cca_results = {}
-    proc_results = {}
+    cca_rows = []
+    proc_rows = []
     for model in MODELS:
         for li, layer in enumerate(LAYERS):
             for f1, f2 in FORMAT_PAIRS:
@@ -488,67 +488,113 @@ def run_robustness(data):
                 Y = data[model][f2][:, li, :]
                 cca_val = cca_score(X, Y)
                 proc_val = procrustes_score(X, Y)
-                cca_results[(model, layer, f"{f1}-{f2}")] = round(cca_val, 6)
-                proc_results[(model, layer, f"{f1}-{f2}")] = round(proc_val, 6)
+                cca_rows.append({"model": model, "layer": layer,
+                                 "pair": f"{f1}-{f2}", "cca": round(cca_val, 6)})
+                proc_rows.append({"model": model, "layer": layer,
+                                  "pair": f"{f1}-{f2}", "procrustes": round(proc_val, 6)})
 
-        # Print summary per model
         for li, layer in enumerate(LAYERS):
-            cca_vals = [cca_results[(model, layer, f"{f1}-{f2}")] for f1, f2 in FORMAT_PAIRS]
-            proc_vals = [proc_results[(model, layer, f"{f1}-{f2}")] for f1, f2 in FORMAT_PAIRS]
+            cca_vals = [r["cca"] for r in cca_rows
+                        if r["model"] == model and r["layer"] == layer]
+            proc_vals = [r["procrustes"] for r in proc_rows
+                         if r["model"] == model and r["layer"] == layer]
             print(f"  {model} L{layer}: CCA={np.nanmean(cca_vals):.4f}, Procrustes={np.mean(proc_vals):.4f}")
 
     elapsed = time.time() - t0
-    print(f"  Robustness: {elapsed:.1f}s")
-    return cca_results, proc_results
+    print(f"  Robustness: {elapsed:.1f}s (RSS={mem_gb():.2f} GB)")
+    return {"cca": cca_rows, "procrustes": proc_rows, "elapsed_s": round(elapsed, 1)}
 
 
-# ── Save outputs ──────────────────────────────────────────────────────
-def save_outputs(probe_results, cka_results, bootstrap_results, power_results,
-                 perm_results, cca_results, proc_results):
-    """Save all CSVs, JSONs, figures, and stats report."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+# ── Save Outputs (CSVs, Figures, Report) ─────────────────────────────
+def save_outputs(ckpt_dir, out_dir, n_bootstrap, n_power_iter, n_perm):
+    """Assemble final report from checkpoint JSONs + generate CSVs/figures."""
+    print(f"\n=== Saving outputs === (RSS={mem_gb():.2f} GB)")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fig_dir = out_dir / "figures"
+    fig_dir.mkdir(parents=True, exist_ok=True)
 
+    # Load all checkpoints
+    a = _load_ckpt(ckpt_dir / "a_load.json")
+    b = _load_ckpt(ckpt_dir / "b_probe_fit.json")
+    c = _load_ckpt(ckpt_dir / "c_cka.json")
+    d = _load_ckpt(ckpt_dir / "d_bootstrap.json")
+    e = _load_ckpt(ckpt_dir / "e_a1_power.json")
+    f = _load_ckpt(ckpt_dir / "f_a2_permutation.json")
+
+    # Robustness checkpoint (optional)
+    rob_path = ckpt_dir / "g_robustness.json"
+    rob = _load_ckpt(rob_path) if rob_path.exists() else None
+
+    # ── Combined report JSON ──
+    report = {"a_load": a, "b_probe_fit": b, "c_cka": c,
+              "d_bootstrap": d, "e_a1_power": e, "f_a2_permutation": f}
+    if rob:
+        report["g_robustness"] = rob
+    _save_ckpt(out_dir / "stage_b_analysis_report.json", report)
+    print("  Saved stage_b_analysis_report.json")
+
+    # ── CSVs ──
     # 1. probe_format_accuracy.csv
-    with open(OUT_DIR / "probe_format_accuracy.csv", "w") as f:
-        f.write("model,layer,accuracy\n")
-        for model in MODELS:
-            for layer in LAYERS:
-                f.write(f"{model},{layer},{probe_results[model][layer]}\n")
-    print(f"  Saved probe_format_accuracy.csv ({len(MODELS)*len(LAYERS)} rows)")
+    with open(out_dir / "probe_format_accuracy.csv", "w") as fh:
+        fh.write("model,layer,accuracy\n")
+        for r in b["results"]:
+            fh.write(f"{r['model']},{r['layer']},{r['accuracy']}\n")
+    print(f"  Saved probe_format_accuracy.csv ({len(b['results'])} rows)")
 
     # 2. cka_per_layer_per_pair.csv
-    with open(OUT_DIR / "cka_per_layer_per_pair.csv", "w") as f:
-        f.write("model,layer,format_pair,cka\n")
-        for (model, layer, pair), val in sorted(cka_results.items()):
-            f.write(f"{model},{layer},{pair},{val}\n")
-    print(f"  Saved cka_per_layer_per_pair.csv ({len(cka_results)} rows)")
+    with open(out_dir / "cka_per_layer_per_pair.csv", "w") as fh:
+        fh.write("model,layer,format_pair,cka\n")
+        for r in sorted(c["results"], key=lambda x: (x["model"], x["layer"], x["pair"])):
+            fh.write(f"{r['model']},{r['layer']},{r['pair']},{r['cka']}\n")
+    print(f"  Saved cka_per_layer_per_pair.csv ({len(c['results'])} rows)")
 
     # 3. cka_bootstrap_ci.csv
-    with open(OUT_DIR / "cka_bootstrap_ci.csv", "w") as f:
-        f.write("model,layer,mean,ci_low,ci_high,ci_width\n")
-        for (model, layer), v in sorted(bootstrap_results.items()):
-            f.write(f"{model},{layer},{v['mean']},{v['ci_low']},{v['ci_high']},{v['ci_width']}\n")
-    print(f"  Saved cka_bootstrap_ci.csv ({len(bootstrap_results)} rows)")
+    with open(out_dir / "cka_bootstrap_ci.csv", "w") as fh:
+        fh.write("model,layer,mean,ci_low,ci_high,ci_width\n")
+        for r in sorted(d["results"], key=lambda x: (x["model"], x["layer"])):
+            fh.write(f"{r['model']},{r['layer']},{r['mean']},{r['ci_low']},{r['ci_high']},{r['ci_width']}\n")
+    print(f"  Saved cka_bootstrap_ci.csv ({len(d['results'])} rows)")
 
     # 4. a1_power_sim.json
-    with open(OUT_DIR / "a1_power_sim.json", "w") as f:
-        json.dump(power_results, f, indent=2)
+    _save_ckpt(out_dir / "a1_power_sim.json", e)
     print("  Saved a1_power_sim.json")
 
     # 5. a2_permutation.json
-    with open(OUT_DIR / "a2_permutation.json", "w") as f:
-        json.dump(perm_results, f, indent=2)
+    _save_ckpt(out_dir / "a2_permutation.json", f)
     print("  Saved a2_permutation.json")
 
-    # 6. Figure: probe_accuracy_curve.pdf
+    # ── Figures ──
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        _generate_figures(b, c, fig_dir, plt)
+    except ImportError:
+        print("  WARNING: matplotlib not available, skipping figures")
+
+    # ── Stats report ──
+    report_md = _generate_stats_report(b, c, d, e, f, rob, n_bootstrap, n_power_iter, n_perm)
+    with open(out_dir / "stats_report.md", "w") as fh:
+        fh.write(report_md)
+    print("  Saved stats_report.md")
+
+
+def _generate_figures(b, c, fig_dir, plt):
+    """Generate PDF figures from checkpoint data."""
+    # Build lookup dicts from checkpoint rows
+    probe_acc = {}
+    for r in b["results"]:
+        probe_acc.setdefault(r["model"], {})[r["layer"]] = r["accuracy"]
+
+    cka_lookup = {}
+    for r in c["results"]:
+        cka_lookup[(r["model"], r["layer"], r["pair"])] = r["cka"]
+
+    # Figure 1: probe accuracy curve
     fig, ax = plt.subplots(figsize=(8, 5))
     for model in MODELS:
-        accs = [probe_results[model][l] for l in LAYERS]
+        accs = [probe_acc[model][l] for l in LAYERS]
         ax.plot(LAYERS, accs, "o-", label=model, linewidth=2)
     ax.axhline(1/3, color="gray", linestyle="--", label="chance (1/3)")
     ax.set_xlabel("Layer")
@@ -558,16 +604,16 @@ def save_outputs(probe_results, cka_results, bootstrap_results, power_results,
     ax.set_ylim(0, 1.05)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    fig.savefig(FIG_DIR / "probe_accuracy_curve.pdf", dpi=150)
+    fig.savefig(fig_dir / "probe_accuracy_curve.pdf", dpi=150)
     plt.close(fig)
     print("  Saved figures/probe_accuracy_curve.pdf")
 
-    # 7. Figure: cka_layer_curve.pdf
+    # Figure 2: CKA layer curve
     fig, ax = plt.subplots(figsize=(8, 5))
     for model in MODELS:
         means = []
-        for li, layer in enumerate(LAYERS):
-            vals = [cka_results[(model, layer, f"{f1}-{f2}")] for f1, f2 in FORMAT_PAIRS]
+        for layer in LAYERS:
+            vals = [cka_lookup[(model, layer, f"{f1}-{f2}")] for f1, f2 in FORMAT_PAIRS]
             means.append(np.mean(vals))
         ax.plot(LAYERS, means, "o-", label=model, linewidth=2)
     ax.set_xlabel("Layer")
@@ -577,17 +623,17 @@ def save_outputs(probe_results, cka_results, bootstrap_results, power_results,
     ax.set_ylim(0, 1.05)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    fig.savefig(FIG_DIR / "cka_layer_curve.pdf", dpi=150)
+    fig.savefig(fig_dir / "cka_layer_curve.pdf", dpi=150)
     plt.close(fig)
     print("  Saved figures/cka_layer_curve.pdf")
 
-    # 8. Figure: cka_heatmap.pdf (one subplot per model)
+    # Figure 3: CKA heatmap
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
     for ax, model in zip(axes, MODELS):
         mat = np.zeros((len(LAYERS), len(FORMAT_PAIRS)))
         for li, layer in enumerate(LAYERS):
             for pi, (f1, f2) in enumerate(FORMAT_PAIRS):
-                mat[li, pi] = cka_results[(model, layer, f"{f1}-{f2}")]
+                mat[li, pi] = cka_lookup[(model, layer, f"{f1}-{f2}")]
         im = ax.imshow(mat, aspect="auto", vmin=0, vmax=1, cmap="viridis")
         ax.set_yticks(range(len(LAYERS)))
         ax.set_yticklabels(LAYERS)
@@ -602,28 +648,32 @@ def save_outputs(probe_results, cka_results, bootstrap_results, power_results,
     fig.colorbar(im, ax=axes, shrink=0.8, label="CKA")
     fig.suptitle("Cross-Format CKA Heatmap")
     fig.tight_layout()
-    fig.savefig(FIG_DIR / "cka_heatmap.pdf", dpi=150)
+    fig.savefig(fig_dir / "cka_heatmap.pdf", dpi=150)
     plt.close(fig)
     print("  Saved figures/cka_heatmap.pdf")
 
-    # 9. stats_report.md
-    report = generate_stats_report(probe_results, cka_results, bootstrap_results,
-                                   power_results, perm_results, cca_results, proc_results)
-    with open(OUT_DIR / "stats_report.md", "w") as f:
-        f.write(report)
-    print("  Saved stats_report.md")
 
+def _generate_stats_report(b, c, d, e, f, rob, n_bootstrap, n_power_iter, n_perm):
+    """Generate comprehensive stats report markdown."""
+    # Build lookups
+    probe_acc = {}
+    for r in b["results"]:
+        probe_acc.setdefault(r["model"], {})[r["layer"]] = r["accuracy"]
 
-def generate_stats_report(probe_results, cka_results, bootstrap_results,
-                          power_results, perm_results, cca_results, proc_results):
-    """Generate comprehensive stats report."""
+    cka_lookup = {}
+    for r in c["results"]:
+        cka_lookup[(r["model"], r["layer"], r["pair"])] = r["cka"]
+
+    boot_lookup = {}
+    for r in d["results"]:
+        boot_lookup[(r["model"], r["layer"])] = r
+
     lines = []
     lines.append("# Stage B Analysis v1 — Statistical Report")
     lines.append(f"\nGenerated: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")
-    lines.append(f"N_triples: 252, Layers: {LAYERS}, Models: {MODELS}")
-    lines.append(f"Bootstrap: {N_BOOTSTRAP}, Permutations: {N_PERMUTATION}, Power iterations: {N_POWER_ITER}")
+    lines.append(f"Layers: {LAYERS}, Models: {MODELS}")
+    lines.append(f"Bootstrap: {n_bootstrap}, Permutations: {n_perm}, Power iterations: {n_power_iter}")
 
-    # Pre-reg compliance
     lines.append("\n## Pre-Registration Compliance")
     lines.append("- [x] Main metric: CKA (linear kernel)")
     lines.append("- [x] CCA + Procrustes as robustness checks")
@@ -638,7 +688,7 @@ def generate_stats_report(probe_results, cka_results, bootstrap_results,
     lines.append("\n| Model | " + " | ".join(f"L{l}" for l in LAYERS) + " |")
     lines.append("|-------|" + "|".join("------" for _ in LAYERS) + "|")
     for model in MODELS:
-        vals = " | ".join(f"{probe_results[model][l]:.4f}" for l in LAYERS)
+        vals = " | ".join(f"{probe_acc[model][l]:.4f}" for l in LAYERS)
         lines.append(f"| {model} | {vals} |")
 
     # CKA table
@@ -648,20 +698,20 @@ def generate_stats_report(probe_results, cka_results, bootstrap_results,
     for model in MODELS:
         vals = []
         for layer in LAYERS:
-            pair_vals = [cka_results[(model, layer, f"{f1}-{f2}")] for f1, f2 in FORMAT_PAIRS]
+            pair_vals = [cka_lookup[(model, layer, f"{f1}-{f2}")] for f1, f2 in FORMAT_PAIRS]
             vals.append(f"{np.mean(pair_vals):.4f}")
         lines.append(f"| {model} | {' | '.join(vals)} |")
 
-    # CKA per pair detail
+    # CKA per pair
     lines.append("\n### CKA Per Format Pair")
     for model in MODELS:
         lines.append(f"\n**{model}**:")
         lines.append("| Layer | svg-tikz | svg-asy | tikz-asy |")
         lines.append("|-------|----------|---------|----------|")
         for layer in LAYERS:
-            v1 = cka_results[(model, layer, "svg-tikz")]
-            v2 = cka_results[(model, layer, "svg-asy")]
-            v3 = cka_results[(model, layer, "tikz-asy")]
+            v1 = cka_lookup[(model, layer, "svg-tikz")]
+            v2 = cka_lookup[(model, layer, "svg-asy")]
+            v3 = cka_lookup[(model, layer, "tikz-asy")]
             lines.append(f"| {layer} | {v1:.4f} | {v2:.4f} | {v3:.4f} |")
 
     # Bootstrap CI
@@ -670,97 +720,231 @@ def generate_stats_report(probe_results, cka_results, bootstrap_results,
     lines.append("|-------|-------|------|--------|---------|-------|")
     for model in MODELS:
         for layer in LAYERS:
-            v = bootstrap_results[(model, layer)]
+            v = boot_lookup[(model, layer)]
             lines.append(f"| {model} | {layer} | {v['mean']:.4f} | {v['ci_low']:.4f} | {v['ci_high']:.4f} | {v['ci_width']:.4f} |")
 
     # A1 Power
     lines.append("\n## E. A1 Power Simulation")
-    for name, v in power_results.items():
-        lines.append(f"\n**{name}** (cells={v['n_cells']}, iter={v['n_iter']}):")
-        lines.append(f"- Power: **{v['power']:.4f}**")
-        lines.append(f"- Mean observed CKA: {v['mean_observed_cka']:.4f}")
-        lines.append(f"- Mean null p-value: {v['mean_null_p_value']:.4f}")
+    for name in ["N12", "N18"]:
+        if name in e:
+            v = e[name]
+            lines.append(f"\n**{name}** (cells={v['n_cells']}, iter={v['n_iter']}):")
+            lines.append(f"- Power: **{v['power']:.4f}**")
+            lines.append(f"- Mean observed CKA: {v['mean_observed_cka']:.4f}")
+            lines.append(f"- Null mean: {v['null_mean']:.4f}")
 
     # A2 Permutation
     lines.append("\n## F. A2 Permutation Test")
     lines.append("\n| Model | Observed CKA | Null Mean | Null Std | p-value |")
     lines.append("|-------|-------------|-----------|----------|---------|")
     for model in MODELS:
-        v = perm_results[model]
-        lines.append(f"| {model} | {v['observed_cka_mean']:.4f} | {v['null_mean']:.4f} | {v['null_std']:.4f} | {v['p_value']:.6f} |")
+        if model in f:
+            v = f[model]
+            lines.append(f"| {model} | {v['observed_cka_mean']:.4f} | {v['null_mean']:.4f} | {v['null_std']:.4f} | {v['p_value']:.6f} |")
 
     # Robustness
-    lines.append("\n## Robustness: CCA + Procrustes")
-    lines.append("\n### Mean CCA per Model × Layer")
-    lines.append("| Model | " + " | ".join(f"L{l}" for l in LAYERS) + " |")
-    lines.append("|-------|" + "|".join("------" for _ in LAYERS) + "|")
-    for model in MODELS:
-        vals = []
-        for layer in LAYERS:
-            pair_vals = [cca_results[(model, layer, f"{f1}-{f2}")] for f1, f2 in FORMAT_PAIRS]
-            vals.append(f"{np.nanmean(pair_vals):.4f}")
-        lines.append(f"| {model} | {' | '.join(vals)} |")
+    if rob:
+        cca_lookup = {}
+        for r in rob["cca"]:
+            cca_lookup[(r["model"], r["layer"], r["pair"])] = r["cca"]
+        proc_lookup = {}
+        for r in rob["procrustes"]:
+            proc_lookup[(r["model"], r["layer"], r["pair"])] = r["procrustes"]
 
-    lines.append("\n### Mean Procrustes per Model × Layer")
-    lines.append("| Model | " + " | ".join(f"L{l}" for l in LAYERS) + " |")
-    lines.append("|-------|" + "|".join("------" for _ in LAYERS) + "|")
-    for model in MODELS:
-        vals = []
-        for layer in LAYERS:
-            pair_vals = [proc_results[(model, layer, f"{f1}-{f2}")] for f1, f2 in FORMAT_PAIRS]
-            vals.append(f"{np.mean(pair_vals):.4f}")
-        lines.append(f"| {model} | {' | '.join(vals)} |")
+        lines.append("\n## Robustness: CCA + Procrustes")
+        lines.append("\n### Mean CCA per Model x Layer")
+        lines.append("| Model | " + " | ".join(f"L{l}" for l in LAYERS) + " |")
+        lines.append("|-------|" + "|".join("------" for _ in LAYERS) + "|")
+        for model in MODELS:
+            vals = []
+            for layer in LAYERS:
+                pair_vals = [cca_lookup.get((model, layer, f"{f1}-{f2}"), float("nan"))
+                             for f1, f2 in FORMAT_PAIRS]
+                vals.append(f"{np.nanmean(pair_vals):.4f}")
+            lines.append(f"| {model} | {' | '.join(vals)} |")
+
+        lines.append("\n### Mean Procrustes per Model x Layer")
+        lines.append("| Model | " + " | ".join(f"L{l}" for l in LAYERS) + " |")
+        lines.append("|-------|" + "|".join("------" for _ in LAYERS) + "|")
+        for model in MODELS:
+            vals = []
+            for layer in LAYERS:
+                pair_vals = [proc_lookup.get((model, layer, f"{f1}-{f2}"), 0.0)
+                             for f1, f2 in FORMAT_PAIRS]
+                vals.append(f"{np.mean(pair_vals):.4f}")
+            lines.append(f"| {model} | {' | '.join(vals)} |")
 
     # Sanity checks
     lines.append("\n## Sanity Checks")
-    # Check probe accuracy monotonicity
     for model in MODELS:
-        accs = [probe_results[model][l] for l in LAYERS]
+        accs = [probe_acc[model][l] for l in LAYERS]
         monotonic = all(accs[i] <= accs[i+1] for i in range(len(accs)-1))
         lines.append(f"- {model} probe monotonic increasing: {'YES' if monotonic else 'NO'} (min={min(accs):.4f}, max={max(accs):.4f})")
 
-    # CI width check
-    ci_widths = [bootstrap_results[(m, l)]["ci_width"] for m in MODELS for l in LAYERS]
+    ci_widths = [boot_lookup[(m, l)]["ci_width"] for m in MODELS for l in LAYERS]
     lines.append(f"- Bootstrap CI widths: min={min(ci_widths):.4f}, max={max(ci_widths):.4f}, mean={np.mean(ci_widths):.4f}")
     lines.append(f"- All CI widths < 0.1: {'YES' if max(ci_widths) < 0.1 else 'NO'}")
 
-    # A2 significance
     for model in MODELS:
-        p = perm_results[model]["p_value"]
-        sig = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "n.s."
-        lines.append(f"- {model} A2 p-value: {p:.6f} ({sig})")
+        if model in f:
+            p = f[model]["p_value"]
+            sig = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "n.s."
+            lines.append(f"- {model} A2 p-value: {p:.6f} ({sig})")
 
     return "\n".join(lines)
 
 
-# ── Main ──────────────────────────────────────────────────────────────
+# ── Main ─────────────────────────────────────────────────────────────
 def main():
+    parser = argparse.ArgumentParser(description="Stage B Analysis v1")
+    parser.add_argument("--smoke", action="store_true",
+                        help="Smoke test with fake data (N=12, reduced iterations)")
+    parser.add_argument("--force-rerun", action="store_true",
+                        help="Ignore existing checkpoints and rerun all modules")
+    args = parser.parse_args()
+
+    np.random.seed(SEED)
     t_total = time.time()
+
+    # ── Config ──
+    if args.smoke:
+        n_triples = 12
+        n_bootstrap = 10
+        n_power_iter = 10
+        n_perm = 50
+        cache_dir = PROJECT_ROOT / "tests" / "fake_hidden_states"
+        ckpt_dir = PROJECT_ROOT / "artifacts" / "stage_b_analysis_v1_checkpoints_smoke"
+        out_dir = PROJECT_ROOT / "artifacts" / "stage_b_analysis_v1_smoke"
+    else:
+        n_triples = 252
+        n_bootstrap = 1000
+        n_power_iter = 1000
+        n_perm = 2000
+        cache_dir = Path("/root/autodl-tmp/cache/hidden_states")
+        ckpt_dir = PROJECT_ROOT / "artifacts" / "stage_b_analysis_v1_checkpoints"
+        out_dir = PROJECT_ROOT / "artifacts" / "stage_b_analysis_v1"
+
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
     print("=" * 60)
-    print("Stage B Analysis v1")
+    print(f"Stage B Analysis v1 {'(SMOKE)' if args.smoke else ''}")
+    print(f"  n_triples={n_triples}, bootstrap={n_bootstrap}, power={n_power_iter}, perm={n_perm}")
+    print(f"  checkpoints: {ckpt_dir}")
+    print(f"  RSS={mem_gb():.2f} GB")
     print("=" * 60)
 
-    data, triples = load_hidden_states()
-    probe_results = run_probe_fit(data)
+    # Generate fake data for smoke
+    if args.smoke:
+        generate_smoke_data(cache_dir, n_triples)
 
-    print("\n  Pre-computing Gram matrices...")
-    grams = _precompute_grams(data)
-    print("  Done.")
+    # ── Determine which modules need running ──
+    module_names = ["a_load", "b_probe_fit", "c_cka", "d_bootstrap",
+                    "e_a1_power", "f_a2_permutation", "g_robustness"]
+    need_run = {}
+    for name in module_names:
+        ckpt_path = ckpt_dir / f"{name}.json"
+        need_run[name] = args.force_rerun or not ckpt_path.exists()
+        if not need_run[name]:
+            print(f"  skipping module {name} (checkpoint exists)")
 
-    cka_results = run_cka(data, grams)
-    bootstrap_results = run_bootstrap_ci(data, grams)
-    power_results = run_a1_power_sim(data)
-    perm_results = run_a2_permutation(data, grams)
-    cca_results, proc_results = run_robustness(data)
+    need_data = any(need_run[m] for m in module_names)
+    need_raw_grams = any(need_run[m] for m in ["c_cka", "d_bootstrap", "e_a1_power", "f_a2_permutation"])
 
-    print("\n=== Saving outputs ===")
-    save_outputs(probe_results, cka_results, bootstrap_results, power_results,
-                 perm_results, cca_results, proc_results)
+    # ── Load data if needed ──
+    data = None
+    raw_grams = None
+
+    if need_data:
+        data, detected_dtype, load_time = load_hidden_states(cache_dir, n_triples)
+
+        # Save A checkpoint
+        if need_run["a_load"]:
+            sample_shape = list(data[MODELS[0]][FORMATS[0]].shape)
+            _save_ckpt(ckpt_dir / "a_load.json", {
+                "n_triples": n_triples,
+                "layers": LAYERS,
+                "models": MODELS,
+                "formats": FORMATS,
+                "pt_dtype": detected_dtype,
+                "loaded_dtype": "float32",
+                "sample_shape": sample_shape,
+                "load_time_s": round(load_time, 1),
+            })
+            print(f"  [checkpoint] a_load.json saved")
+
+        # Compute shared raw Gram matrices
+        if need_raw_grams:
+            raw_grams = compute_raw_grams(data)
+
+    # ── B. Probe Fit ──
+    if need_run["b_probe_fit"]:
+        b_result = run_probe_fit(data, n_triples)
+        _save_ckpt(ckpt_dir / "b_probe_fit.json", b_result)
+        print(f"  [checkpoint] b_probe_fit.json saved")
+        del b_result
+        gc.collect()
+
+    # ── G. Robustness (run before freeing data) ──
+    if need_run["g_robustness"]:
+        rob_result = run_robustness(data)
+        _save_ckpt(ckpt_dir / "g_robustness.json", rob_result)
+        print(f"  [checkpoint] g_robustness.json saved")
+        del rob_result
+        gc.collect()
+
+    # ── Free data (no longer needed; C-F use raw_grams) ──
+    if data is not None:
+        del data
+        gc.collect()
+        print(f"  [memory] data freed (RSS={mem_gb():.2f} GB)")
+
+    # ── C. CKA ──
+    if need_run["c_cka"]:
+        c_result = run_cka(raw_grams)
+        _save_ckpt(ckpt_dir / "c_cka.json", c_result)
+        print(f"  [checkpoint] c_cka.json saved")
+        del c_result
+        gc.collect()
+
+    # ── D. Bootstrap CI ──
+    if need_run["d_bootstrap"]:
+        d_result = run_bootstrap_ci(raw_grams, n_triples, n_bootstrap)
+        _save_ckpt(ckpt_dir / "d_bootstrap.json", d_result)
+        print(f"  [checkpoint] d_bootstrap.json saved")
+        del d_result
+        gc.collect()
+
+    # ── E. A1 Power Sim ──
+    if need_run["e_a1_power"]:
+        e_result = run_a1_power_sim(raw_grams, n_triples, n_power_iter)
+        _save_ckpt(ckpt_dir / "e_a1_power.json", e_result)
+        print(f"  [checkpoint] e_a1_power.json saved")
+        del e_result
+        gc.collect()
+
+    # ── F. A2 Permutation ──
+    if need_run["f_a2_permutation"]:
+        f_result = run_a2_permutation(raw_grams, n_triples, n_perm)
+        _save_ckpt(ckpt_dir / "f_a2_permutation.json", f_result)
+        print(f"  [checkpoint] f_a2_permutation.json saved")
+        del f_result
+        gc.collect()
+
+    # ── Free raw_grams ──
+    if raw_grams is not None:
+        del raw_grams
+        gc.collect()
+        print(f"  [memory] raw_grams freed (RSS={mem_gb():.2f} GB)")
+
+    # ── Assemble report from checkpoints ──
+    save_outputs(ckpt_dir, out_dir, n_bootstrap, n_power_iter, n_perm)
 
     elapsed = time.time() - t_total
     print(f"\n{'=' * 60}")
     print(f"Total elapsed: {elapsed:.1f}s")
-    print(f"Output dir: {OUT_DIR}")
+    print(f"Checkpoints: {ckpt_dir}")
+    print(f"Output dir: {out_dir}")
+    print(f"Final RSS: {mem_gb():.2f} GB")
     print(f"{'=' * 60}")
 
 

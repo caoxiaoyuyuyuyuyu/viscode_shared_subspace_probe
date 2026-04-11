@@ -4,3 +4,4 @@ data_snapshots/
 study-packages/
 logs/
 .claude/
+tests/fake_hidden_states/
