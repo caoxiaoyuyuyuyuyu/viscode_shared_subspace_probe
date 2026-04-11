@@ -64,7 +64,8 @@ def parse_args():
                    help="Model to probe (omit with --resolve-only)")
     p.add_argument("--format", choices=["svg", "tikz", "asy"],
                    help="Format to probe (omit with --resolve-only)")
-    p.add_argument("--gpu", type=int, default=0)
+    p.add_argument("--gpu", type=int, default=0,
+                   help="GPU index for logging/audit only; actual device chosen via external CUDA_VISIBLE_DEVICES")
     p.add_argument("--triples-path", required=True,
                    help="Path to sbert_triples.json")
     p.add_argument("--out-dir", required=True,
@@ -265,7 +266,6 @@ def main():
     import torch
     from transformers import AutoTokenizer, AutoModelForCausalLM
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
     device = torch.device("cuda:0")
 
     model_cfg = MODEL_REGISTRY[args.model]
@@ -387,6 +387,9 @@ def main():
         "tensor_shape": [len(LAYERS), hidden_dim],
         "max_seq_len": args.max_seq_len,
         "gpu": args.gpu,
+        "assigned_gpu": args.gpu,
+        "visible_cuda_devices": os.environ.get("CUDA_VISIBLE_DEVICES", "unset"),
+        "torch_current_device": torch.cuda.current_device() if torch.cuda.is_available() else -1,
         "run_ts": datetime.now(timezone.utc).isoformat(),
     }
     summary_path = out_dir / "summary.json"

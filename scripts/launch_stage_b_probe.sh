@@ -100,3 +100,5 @@ for model in $MODELS; do
         fi
     done
 done
+
+echo "=== STAGE_B_V4_DONE ==="  # sentinel — DO NOT remove, used by worker done check
