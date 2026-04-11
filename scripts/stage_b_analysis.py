@@ -265,17 +265,20 @@ def run_bootstrap_ci(data, grams):
 def run_a1_power_sim(data):
     """Monte Carlo power simulation for CKA detection at N=12 and N=18.
 
-    For each iteration:
-    - Sample N triples (bootstrap from 252)
-    - Compute observed mean CKA (aggregated across cells)
-    - Generate null CKA by permuting triple indices
-    - Record if observed > 95th percentile of null
+    Strategy: for each of 1000 bootstrap samples of triples, compute the
+    aggregate CKA statistic. Then test against a null distribution built
+    from 500 permutations of the full dataset. Power = fraction of bootstrap
+    samples where observed CKA > null 95th percentile.
+
+    Uses layer 24 (penultimate) as representative layer to keep compute tractable.
     """
     print(f"\n=== E. A1 Power Simulation ({N_POWER_ITER} iterations) ===")
     t0 = time.time()
 
     rng = np.random.RandomState(SEED + 1)
-    n_null_per_iter = 50  # reduced from 100 for speed
+    rep_layer_idx = 5  # layer 24 = index 5
+    n = 252
+    H = np.eye(n) - 1.0 / n
     results = {}
 
     configs = {
@@ -283,74 +286,63 @@ def run_a1_power_sim(data):
         "N18": {"models": MODELS, "n_cells": 18},
     }
 
-    # Pre-compute raw Gram matrices for all models
+    # Pre-compute raw Gram matrices at representative layer only
     raw_grams = {}
     for model in MODELS:
         raw_grams[model] = {}
         for fmt in FORMATS:
-            raw_grams[model][fmt] = {}
-            for li in range(len(LAYERS)):
-                X = data[model][fmt][:, li, :]
-                raw_grams[model][fmt][li] = X @ X.T
+            X = data[model][fmt][:, rep_layer_idx, :]
+            raw_grams[model][fmt] = X @ X.T
 
     for config_name, cfg in configs.items():
         print(f"\n  {config_name} (models={cfg['models']}, cells={cfg['n_cells']}):")
-        n_sig = 0
-        observed_ckas = []
 
-        for it in range(N_POWER_ITER):
-            idx = rng.choice(252, size=252, replace=True)
-            n = len(idx)
-            H = np.eye(n) - 1.0 / n
+        # Step 1: Build null distribution (500 permutations on full data)
+        n_null = 500
+        null_dist = np.empty(n_null)
+        # Pre-compute centered Grams
+        centered = {}
+        for model in cfg["models"]:
+            centered[model] = {}
+            for fmt in FORMATS:
+                centered[model][fmt] = H @ raw_grams[model][fmt] @ H
 
-            # Compute observed CKA
-            obs_vals = []
-            gram_cache = {}  # cache centered Grams for this iteration
+        for p_idx in range(n_null):
+            perm = rng.permutation(n)
+            null_vals = []
             for model in cfg["models"]:
-                for li in range(len(LAYERS)):
-                    for f1, f2 in FORMAT_PAIRS:
-                        # Get centered Grams (cache to reuse)
-                        key1 = (model, f1, li)
-                        if key1 not in gram_cache:
-                            K = raw_grams[model][f1][li][np.ix_(idx, idx)]
-                            gram_cache[key1] = H @ K @ H
-                        key2 = (model, f2, li)
-                        if key2 not in gram_cache:
-                            K = raw_grams[model][f2][li][np.ix_(idx, idx)]
-                            gram_cache[key2] = H @ K @ H
-                        KX_c = gram_cache[key1]
-                        KY_c = gram_cache[key2]
-                        hsic_xy = np.sum(KX_c * KY_c)
-                        hsic_xx = np.sum(KX_c * KX_c)
-                        hsic_yy = np.sum(KY_c * KY_c)
-                        denom = np.sqrt(hsic_xx * hsic_yy)
-                        obs_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
+                for f1, f2 in FORMAT_PAIRS:
+                    KX_c = centered[model][f1]
+                    KY_perm = raw_grams[model][f2][np.ix_(perm, perm)]
+                    KY_c = H @ KY_perm @ H
+                    null_vals.append(_cka_from_grams(KX_c, KY_c))
+            null_dist[p_idx] = np.mean(null_vals)
+        null_95 = np.percentile(null_dist, 95)
+        print(f"    Null distribution: mean={np.mean(null_dist):.4f}, 95th={null_95:.4f}")
+
+        # Step 2: Bootstrap power — resample triples and compute observed CKA
+        n_sig = 0
+        observed_ckas = np.empty(N_POWER_ITER)
+        for it in range(N_POWER_ITER):
+            idx = rng.choice(n, size=n, replace=True)
+            obs_vals = []
+            for model in cfg["models"]:
+                for f1, f2 in FORMAT_PAIRS:
+                    KX = raw_grams[model][f1][np.ix_(idx, idx)]
+                    KY = raw_grams[model][f2][np.ix_(idx, idx)]
+                    n_b = len(idx)
+                    Hb = np.eye(n_b) - 1.0 / n_b
+                    KX_c = Hb @ KX @ Hb
+                    KY_c = Hb @ KY @ Hb
+                    hsic_xy = np.sum(KX_c * KY_c)
+                    hsic_xx = np.sum(KX_c * KX_c)
+                    hsic_yy = np.sum(KY_c * KY_c)
+                    denom = np.sqrt(hsic_xx * hsic_yy)
+                    obs_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
             obs_mean = np.mean(obs_vals)
-            observed_ckas.append(obs_mean)
-
-            # Null: permute sample indices
-            null_ckas = []
-            for _ in range(n_null_per_iter):
-                perm = rng.permutation(n)
-                null_vals = []
-                for model in cfg["models"]:
-                    for li in range(len(LAYERS)):
-                        for f1, f2 in FORMAT_PAIRS:
-                            KX_c = gram_cache[(model, f1, li)]
-                            KY_c_perm = gram_cache[(model, f2, li)][np.ix_(perm, perm)]
-                            # Re-center after permutation of one side
-                            KY_c_perm = H @ KY_c_perm @ H
-                            hsic_xy = np.sum(KX_c * KY_c_perm)
-                            hsic_xx = np.sum(KX_c * KX_c)
-                            hsic_yy = np.sum(KY_c_perm * KY_c_perm)
-                            denom = np.sqrt(hsic_xx * hsic_yy)
-                            null_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
-                null_ckas.append(np.mean(null_vals))
-
-            null_95 = np.percentile(null_ckas, 95)
+            observed_ckas[it] = obs_mean
             if obs_mean > null_95:
                 n_sig += 1
-
             if (it + 1) % 200 == 0:
                 print(f"    iter {it+1}/{N_POWER_ITER}, running power={n_sig/(it+1):.3f}")
 
@@ -358,8 +350,12 @@ def run_a1_power_sim(data):
         results[config_name] = {
             "power": round(power, 4),
             "n_iter": N_POWER_ITER,
+            "n_null": n_null,
             "n_cells": cfg["n_cells"],
+            "representative_layer": LAYERS[rep_layer_idx],
             "mean_observed_cka": round(float(np.mean(observed_ckas)), 6),
+            "null_95th": round(float(null_95), 6),
+            "null_mean": round(float(np.mean(null_dist)), 6),
         }
         print(f"    power = {power:.4f}, mean_obs_CKA = {np.mean(observed_ckas):.4f}")
 
@@ -370,10 +366,12 @@ def run_a1_power_sim(data):
 
 # ── F. A2 Permutation Test ────────────────────────────────────────────
 def run_a2_permutation(data, grams):
-    """Permutation test for CKA: per-model, shuffle sample indices 5000 times.
+    """Permutation test for CKA: per-model, shuffle sample indices.
     Uses pre-computed raw Gram matrices for speed.
+    Reduced to 2000 permutations (sufficient for p-value resolution to 0.0005).
     """
-    print(f"\n=== F. A2 Permutation Test ({N_PERMUTATION} permutations) ===")
+    n_perm = 2000
+    print(f"\n=== F. A2 Permutation Test ({n_perm} permutations) ===")
     t0 = time.time()
 
     # Pre-compute raw Gram matrices
@@ -399,6 +397,12 @@ def run_a2_permutation(data, grams):
             for li in range(len(LAYERS)):
                 centered[fmt][li] = H @ raw_grams[model][fmt][li] @ H
 
+        # Pre-compute HSIC_xx for each (fmt, li) — these don't change under permutation
+        hsic_xx_cache = {}
+        for fmt in FORMATS:
+            for li in range(len(LAYERS)):
+                hsic_xx_cache[(fmt, li)] = float(np.sum(centered[fmt][li] ** 2))
+
         # Observed CKA
         obs_vals = []
         for li in range(len(LAYERS)):
@@ -407,21 +411,23 @@ def run_a2_permutation(data, grams):
         obs_mean = np.mean(obs_vals)
 
         # Null distribution
-        null_means = np.empty(N_PERMUTATION)
-        for p_idx in range(N_PERMUTATION):
+        null_means = np.empty(n_perm)
+        for p_idx in range(n_perm):
             perm = rng.permutation(n)
             null_vals = []
             for li in range(len(LAYERS)):
                 for f1, f2 in FORMAT_PAIRS:
                     KX_c = centered[f1][li]
-                    # Permute Y Gram and re-center
                     KY_perm = raw_grams[model][f2][li][np.ix_(perm, perm)]
                     KY_c = H @ KY_perm @ H
-                    null_vals.append(_cka_from_grams(KX_c, KY_c))
+                    hsic_xy = np.sum(KX_c * KY_c)
+                    hsic_yy = np.sum(KY_c * KY_c)
+                    denom = np.sqrt(hsic_xx_cache[(f1, li)] * hsic_yy)
+                    null_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
             null_means[p_idx] = np.mean(null_vals)
 
-            if (p_idx + 1) % 1000 == 0:
-                print(f"    {model}: {p_idx+1}/{N_PERMUTATION} permutations done")
+            if (p_idx + 1) % 500 == 0:
+                print(f"    {model}: {p_idx+1}/{n_perm} permutations done")
 
         p_value = float(np.mean(null_means >= obs_mean))
 
@@ -432,7 +438,7 @@ def run_a2_permutation(data, grams):
             "null_95th": round(float(np.percentile(null_means, 95)), 6),
             "null_99th": round(float(np.percentile(null_means, 99)), 6),
             "p_value": round(p_value, 6),
-            "n_permutations": N_PERMUTATION,
+            "n_permutations": n_perm,
         }
         print(f"  {model}: obs={obs_mean:.4f}, null_mean={np.mean(null_means):.4f}, p={p_value:.6f}")
 
