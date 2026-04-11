@@ -50,6 +50,7 @@ test -f "$RESOLVED" || { echo "FAIL: resolved_triples.json not generated"; exit 
 # Each model loads once per format (~2min), processes 252 triples (~3-5min)
 
 MODELS="coder viscoder2 qwen25"
+FORMATS="svg tikz asy"
 
 # Method A: svg+tikz parallel on gpu0/gpu1, asy waits (no 2×7B co-resident on same GPU)
 for model in $MODELS; do

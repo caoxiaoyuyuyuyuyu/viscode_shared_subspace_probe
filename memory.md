@@ -322,3 +322,14 @@ while true; do
   sleep 60
 done
 ```
+
+## Bash 脚本 fail-loud（2026-04-11, Reviewer 综合）
+
+**教训**：bash 默认 `set +u`，未定义变量在 `for x in $UNDEFINED` 中静默迭代 0 次不报错。Reviewer 之前被 launch_stage_b_probe.sh verify 循环的 echo 文本误导以为 verify 跑过，实际 $FORMATS 未定义 → 循环体从未执行。
+
+**规范**：所有 launcher / 数据处理 shell 脚本必须在 shebang 下一行加 `set -euo pipefail`：
+- -e: 命令失败立即退出
+- -u: 未定义变量 fail-fast（防此类 bug）
+- -o pipefail: 管道中任意命令失败整条 pipe fail
+
+**适用**：跨项目通用，后续写任何 shell launcher 按此标准。
