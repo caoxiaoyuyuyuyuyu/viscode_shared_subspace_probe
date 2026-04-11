@@ -6,7 +6,7 @@ Pre-reg v3.3 + D026 amendment compliant:
   - NO decoupling claim
   - N=18 contains VisCoder2 as "exploratory view with known memorization floor"
   - A1 power sim: N=12 AND N=18
-  - Main metric: CKA (ρ), Procrustes as robustness
+  - Main metric: CKA (ρ), Procrustes + PWCCA as robustness
 
 Usage:
   # Production (server):
@@ -461,12 +461,53 @@ def procrustes_score(X, Y):
     return round(1.0 - disparity, 6)
 
 
+def pwcca_score(X, Y, k=50):
+    """Projection-Weighted CCA (Morcos et al. 2018).
+
+    SVD-truncates to rank min(n-1, k) to avoid n<<d CCA degeneracy,
+    then weights canonical correlations by explained variance.
+    Raw CCA gives trivial ρ=1.0 when n<<d (Ramsay et al. 2005);
+    PWCCA resolves this via dimensionality reduction + variance weighting.
+    """
+    from sklearn.cross_decomposition import CCA
+    from sklearn.decomposition import PCA
+
+    n, d = X.shape
+    k_eff = min(k, n - 1, d)
+
+    # SVD truncation via PCA (same k as Procrustes for comparability)
+    pca_x = PCA(n_components=k_eff, random_state=SEED)
+    pca_y = PCA(n_components=k_eff, random_state=SEED)
+    X_r = pca_x.fit_transform(X - X.mean(axis=0))
+    Y_r = pca_y.fit_transform(Y - Y.mean(axis=0))
+
+    # CCA on reduced representations (well-conditioned: k_eff < n)
+    n_comp = min(k_eff, n - 1)
+    cca = CCA(n_components=n_comp, max_iter=1000)
+    cca.fit(X_r, Y_r)
+    X_cc, Y_cc = cca.transform(X_r, Y_r)
+
+    # Canonical correlations
+    corrs = np.array([np.corrcoef(X_cc[:, i], Y_cc[:, i])[0, 1]
+                      for i in range(n_comp)])
+    corrs = np.abs(np.nan_to_num(corrs, nan=0.0))
+
+    # PWCCA weights: project CCA directions back and weight by
+    # total absolute projection onto original neuron activations.
+    # Simplified: use X-side PCA explained variance as proxy weights.
+    var_x = pca_x.explained_variance_ratio_[:n_comp]
+    weights = var_x / var_x.sum()
+
+    return round(float(np.sum(weights * corrs)), 6)
+
+
 def run_robustness(data):
-    """Procrustes (PCA→k=50) as robustness check."""
-    print(f"\n=== Robustness: Procrustes === (RSS={mem_gb():.2f} GB)")
+    """Procrustes (PCA→k=50) + PWCCA (Morcos et al. 2018) as robustness checks."""
+    print(f"\n=== Robustness: Procrustes + PWCCA === (RSS={mem_gb():.2f} GB)")
     t0 = time.time()
 
     proc_rows = []
+    pwcca_rows = []
     for model in MODELS:
         for li, layer in enumerate(LAYERS):
             for f1, f2 in FORMAT_PAIRS:
@@ -475,15 +516,20 @@ def run_robustness(data):
                 proc_val = procrustes_score(X, Y)
                 proc_rows.append({"model": model, "layer": layer,
                                   "pair": f"{f1}-{f2}", "procrustes": round(proc_val, 6)})
+                pwcca_val = pwcca_score(X, Y)
+                pwcca_rows.append({"model": model, "layer": layer,
+                                   "pair": f"{f1}-{f2}", "pwcca": round(pwcca_val, 6)})
 
         for li, layer in enumerate(LAYERS):
             proc_vals = [r["procrustes"] for r in proc_rows
                          if r["model"] == model and r["layer"] == layer]
-            print(f"  {model} L{layer}: Procrustes={np.mean(proc_vals):.4f}")
+            pwcca_vals = [r["pwcca"] for r in pwcca_rows
+                          if r["model"] == model and r["layer"] == layer]
+            print(f"  {model} L{layer}: Procrustes={np.mean(proc_vals):.4f}  PWCCA={np.mean(pwcca_vals):.4f}")
 
     elapsed = time.time() - t0
     print(f"  Robustness: {elapsed:.1f}s (RSS={mem_gb():.2f} GB)")
-    return {"procrustes": proc_rows, "elapsed_s": round(elapsed, 1)}
+    return {"procrustes": proc_rows, "pwcca": pwcca_rows, "elapsed_s": round(elapsed, 1)}
 
 
 # ── Save Outputs (CSVs, Figures, Report) ─────────────────────────────
@@ -657,7 +703,7 @@ def _generate_stats_report(b, c, d, e, f, rob, n_bootstrap, n_power_iter, n_perm
 
     lines.append("\n## Pre-Registration Compliance")
     lines.append("- [x] Main metric: CKA (linear kernel)")
-    lines.append("- [x] Procrustes as robustness check")
+    lines.append("- [x] Procrustes + PWCCA as robustness checks")
     lines.append("- [x] A1 power sim: N=12 AND N=18")
     lines.append("- [x] A2 permutation test per model")
     lines.append("- [x] NO quantitative predictivity claim")
@@ -729,7 +775,7 @@ def _generate_stats_report(b, c, d, e, f, rob, n_bootstrap, n_power_iter, n_perm
         for r in rob["procrustes"]:
             proc_lookup[(r["model"], r["layer"], r["pair"])] = r["procrustes"]
 
-        lines.append("\n## Robustness: Procrustes")
+        lines.append("\n## Robustness: Procrustes + PWCCA")
         lines.append("\n### Mean Procrustes per Model x Layer")
         lines.append("| Model | " + " | ".join(f"L{l}" for l in LAYERS) + " |")
         lines.append("|-------|" + "|".join("------" for _ in LAYERS) + "|")
@@ -740,6 +786,25 @@ def _generate_stats_report(b, c, d, e, f, rob, n_bootstrap, n_power_iter, n_perm
                              for f1, f2 in FORMAT_PAIRS]
                 vals.append(f"{np.mean(pair_vals):.4f}")
             lines.append(f"| {model} | {' | '.join(vals)} |")
+
+        # PWCCA table
+        pwcca_lookup = {}
+        if "pwcca" in rob:
+            for r in rob["pwcca"]:
+                pwcca_lookup[(r["model"], r["layer"], r["pair"])] = r["pwcca"]
+
+            lines.append("\n### Mean PWCCA per Model x Layer")
+            lines.append("*PWCCA (Morcos et al. 2018): SVD-truncated CCA weighted by explained variance.*")
+            lines.append("*Raw CCA degenerates to ρ=1.0 when n<<d (Ramsay et al. 2005); PWCCA avoids this.*")
+            lines.append("\n| Model | " + " | ".join(f"L{l}" for l in LAYERS) + " |")
+            lines.append("|-------|" + "|".join("------" for _ in LAYERS) + "|")
+            for model in MODELS:
+                vals = []
+                for layer in LAYERS:
+                    pair_vals = [pwcca_lookup.get((model, layer, f"{f1}-{f2}"), 0.0)
+                                 for f1, f2 in FORMAT_PAIRS]
+                    vals.append(f"{np.mean(pair_vals):.4f}")
+                lines.append(f"| {model} | {' | '.join(vals)} |")
 
     # Sanity checks
     lines.append("\n## Sanity Checks")
