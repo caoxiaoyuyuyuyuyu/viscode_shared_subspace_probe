@@ -160,86 +160,97 @@ def main():
     llm = LLM(
         model=model_cfg["name"],
         dtype="half",
-        enforce_eager=True,
+        enforce_eager=False,
         max_model_len=4096,
-        gpu_memory_utilization=0.85,
+        gpu_memory_utilization=0.92,
         trust_remote_code=True,
     )
     print(f"[stage_a_gen v3] Model loaded in {time.perf_counter() - t_load:.1f}s")
 
     tokenizer = llm.get_tokenizer() if model_cfg["type"] == "chat" else None
 
-    # ── Generate ──────────────────────────────────────────────────────
+    # ── Build all prompts + params upfront for batch generate ────────
+    all_prompts = []
+    all_params = []
+    all_meta = []  # (idx, prompt_id, caption, regime, exemplar_ids, seed)
+
+    for idx, row in enumerate(pool):
+        prompt_id = row.get("id", f"{args.format}_{idx}")
+        caption = row["caption"]
+
+        for regime in regimes:
+            if regime == "0-shot":
+                user_msg = build_prompt_0shot(caption, args.format)
+                exemplar_ids = []
+            else:
+                user_msg = build_prompt_3shot(caption, args.format, exemplars)
+                exemplar_ids = [ex["id"] for ex in exemplars]
+
+            prompt_text = wrap_chat(user_msg, model_cfg["type"], tokenizer)
+            seed = args.seed_base + idx + (10000 if regime == "3-shot" else 0)
+
+            sp = SamplingParams(
+                n=1,
+                temperature=0.3,
+                max_tokens=fmt_cfg["max_tokens"],
+                stop=fmt_cfg["stop"],
+                include_stop_str_in_output=True,
+                seed=seed,
+            )
+
+            all_prompts.append(prompt_text)
+            all_params.append(sp)
+            all_meta.append({
+                "idx": idx,
+                "prompt_id": prompt_id,
+                "caption": caption,
+                "regime": regime,
+                "exemplar_ids": exemplar_ids,
+                "seed": seed,
+            })
+
+    print(f"[stage_a_gen v3] Built {len(all_prompts)} prompts, submitting batch...")
+
+    # ── Batch generate ────────────────────────────────────────────────
     os.makedirs(args.out_dir, exist_ok=True)
     out_path = os.path.join(args.out_dir, f"{args.model}_{args.format}_s{args.shard_id}.jsonl")
     run_ts = datetime.now(timezone.utc).isoformat()
-    n_written = 0
     t_all = time.perf_counter()
 
-    with open(out_path, "w", encoding="utf-8") as fout:
-        for idx, row in enumerate(pool):
-            prompt_id = row.get("id", f"{args.format}_{idx}")
-            caption = row["caption"]
-
-            for regime in regimes:
-                # Build prompt
-                if regime == "0-shot":
-                    user_msg = build_prompt_0shot(caption, args.format)
-                    exemplar_ids = []
-                else:
-                    user_msg = build_prompt_3shot(caption, args.format, exemplars)
-                    exemplar_ids = [ex["id"] for ex in exemplars]
-
-                prompt_text = wrap_chat(user_msg, model_cfg["type"], tokenizer)
-
-                # Seed: offset 3-shot by 10000 to avoid collisions
-                seed = args.seed_base + idx + (10000 if regime == "3-shot" else 0)
-                sp = SamplingParams(
-                    n=1,
-                    temperature=0.3,
-                    max_tokens=fmt_cfg["max_tokens"],
-                    stop=fmt_cfg["stop"],
-                    include_stop_str_in_output=True,
-                    seed=seed,
-                )
-
-                try:
-                    t0 = time.perf_counter()
-                    outs = llm.generate([prompt_text], sp, use_tqdm=False)
-                    latency_ms = (time.perf_counter() - t0) * 1000.0
-                except Exception as e:
-                    print(f"[stage_a_gen v3] FAIL id={prompt_id} regime={regime}: {e}")
-                    continue
-
-                o = outs[0].outputs[0]
-                checker = VALIDITY_CHECKS[args.format]
-                rec = {
-                    "model": args.model,
-                    "model_name": model_cfg["name"],
-                    "format": args.format,
-                    "prompt_id": prompt_id,
-                    "prompt_idx": idx,
-                    "prompt": caption,
-                    "shot_regime": regime,
-                    "icl_exemplar_ids": exemplar_ids,
-                    "generation": o.text,
-                    "finish_reason": o.finish_reason,
-                    "stop_reason": getattr(o, "stop_reason", None),
-                    "n_tokens": len(o.token_ids),
-                    "latency_ms": round(latency_ms, 2),
-                    "seed": seed,
-                    "truncated": o.finish_reason == "length",
-                    "valid": checker(o.text),
-                    "run_ts": run_ts,
-                }
-                fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                fout.flush()
-                n_written += 1
-
-            if (idx + 1) % 10 == 0:
-                print(f"[stage_a_gen v3] progress: {idx+1}/{len(pool)} prompts, {n_written} records")
+    outputs = llm.generate(all_prompts, all_params)
 
     total_time = time.perf_counter() - t_all
+    avg_latency = total_time / len(outputs) * 1000.0 if outputs else 0
+
+    # ── Write results ─────────────────────────────────────────────────
+    checker = VALIDITY_CHECKS[args.format]
+    n_written = 0
+
+    with open(out_path, "w", encoding="utf-8") as fout:
+        for out, meta in zip(outputs, all_meta):
+            o = out.outputs[0]
+            rec = {
+                "model": args.model,
+                "model_name": model_cfg["name"],
+                "format": args.format,
+                "prompt_id": meta["prompt_id"],
+                "prompt_idx": meta["idx"],
+                "prompt": meta["caption"],
+                "shot_regime": meta["regime"],
+                "icl_exemplar_ids": meta["exemplar_ids"],
+                "generation": o.text,
+                "finish_reason": o.finish_reason,
+                "stop_reason": getattr(o, "stop_reason", None),
+                "n_tokens": len(o.token_ids),
+                "latency_ms": round(avg_latency, 2),
+                "seed": meta["seed"],
+                "truncated": o.finish_reason == "length",
+                "valid": checker(o.text),
+                "run_ts": run_ts,
+            }
+            fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            n_written += 1
+
     print(f"[stage_a_gen v3] done: {n_written} records in {total_time:.1f}s -> {out_path}")
 
     # ── Cleanup ───────────────────────────────────────────────────────
