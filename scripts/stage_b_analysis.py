@@ -6,7 +6,7 @@ Pre-reg v3.3 + D026 amendment compliant:
   - NO decoupling claim
   - N=18 contains VisCoder2 as "exploratory view with known memorization floor"
   - A1 power sim: N=12 AND N=18
-  - Main metric: CKA (ρ), CCA/procrustes as robustness
+  - Main metric: CKA (ρ), Procrustes as robustness
 
 Usage:
   # Production (server):
@@ -448,20 +448,7 @@ def run_a2_permutation(raw_grams, n_triples, n_perm):
     return results
 
 
-# ── Robustness: CCA + Procrustes ────────────────────────────────────
-def cca_score(X, Y, n_components=10):
-    """Mean canonical correlation (top-k)."""
-    from sklearn.cross_decomposition import CCA
-    k = min(n_components, X.shape[0] - 1, X.shape[1], Y.shape[1])
-    cca = CCA(n_components=k, max_iter=1000)
-    try:
-        X_c, Y_c = cca.fit_transform(X, Y)
-        corrs = [np.corrcoef(X_c[:, i], Y_c[:, i])[0, 1] for i in range(k)]
-        return float(np.mean(corrs))
-    except Exception:
-        return float("nan")
-
-
+# ── Robustness: Procrustes ──────────────────────────────────────────
 def procrustes_score(X, Y):
     """1 - Procrustes disparity (higher = more similar)."""
     from scipy.spatial import procrustes as sp_procrustes
@@ -475,34 +462,28 @@ def procrustes_score(X, Y):
 
 
 def run_robustness(data):
-    """CCA and Procrustes as robustness checks."""
-    print(f"\n=== Robustness: CCA + Procrustes === (RSS={mem_gb():.2f} GB)")
+    """Procrustes (PCA→k=50) as robustness check."""
+    print(f"\n=== Robustness: Procrustes === (RSS={mem_gb():.2f} GB)")
     t0 = time.time()
 
-    cca_rows = []
     proc_rows = []
     for model in MODELS:
         for li, layer in enumerate(LAYERS):
             for f1, f2 in FORMAT_PAIRS:
                 X = data[model][f1][:, li, :]
                 Y = data[model][f2][:, li, :]
-                cca_val = cca_score(X, Y)
                 proc_val = procrustes_score(X, Y)
-                cca_rows.append({"model": model, "layer": layer,
-                                 "pair": f"{f1}-{f2}", "cca": round(cca_val, 6)})
                 proc_rows.append({"model": model, "layer": layer,
                                   "pair": f"{f1}-{f2}", "procrustes": round(proc_val, 6)})
 
         for li, layer in enumerate(LAYERS):
-            cca_vals = [r["cca"] for r in cca_rows
-                        if r["model"] == model and r["layer"] == layer]
             proc_vals = [r["procrustes"] for r in proc_rows
                          if r["model"] == model and r["layer"] == layer]
-            print(f"  {model} L{layer}: CCA={np.nanmean(cca_vals):.4f}, Procrustes={np.mean(proc_vals):.4f}")
+            print(f"  {model} L{layer}: Procrustes={np.mean(proc_vals):.4f}")
 
     elapsed = time.time() - t0
     print(f"  Robustness: {elapsed:.1f}s (RSS={mem_gb():.2f} GB)")
-    return {"cca": cca_rows, "procrustes": proc_rows, "elapsed_s": round(elapsed, 1)}
+    return {"procrustes": proc_rows, "elapsed_s": round(elapsed, 1)}
 
 
 # ── Save Outputs (CSVs, Figures, Report) ─────────────────────────────
@@ -676,7 +657,7 @@ def _generate_stats_report(b, c, d, e, f, rob, n_bootstrap, n_power_iter, n_perm
 
     lines.append("\n## Pre-Registration Compliance")
     lines.append("- [x] Main metric: CKA (linear kernel)")
-    lines.append("- [x] CCA + Procrustes as robustness checks")
+    lines.append("- [x] Procrustes as robustness check")
     lines.append("- [x] A1 power sim: N=12 AND N=18")
     lines.append("- [x] A2 permutation test per model")
     lines.append("- [x] NO quantitative predictivity claim")
@@ -744,25 +725,11 @@ def _generate_stats_report(b, c, d, e, f, rob, n_bootstrap, n_power_iter, n_perm
 
     # Robustness
     if rob:
-        cca_lookup = {}
-        for r in rob["cca"]:
-            cca_lookup[(r["model"], r["layer"], r["pair"])] = r["cca"]
         proc_lookup = {}
         for r in rob["procrustes"]:
             proc_lookup[(r["model"], r["layer"], r["pair"])] = r["procrustes"]
 
-        lines.append("\n## Robustness: CCA + Procrustes")
-        lines.append("\n### Mean CCA per Model x Layer")
-        lines.append("| Model | " + " | ".join(f"L{l}" for l in LAYERS) + " |")
-        lines.append("|-------|" + "|".join("------" for _ in LAYERS) + "|")
-        for model in MODELS:
-            vals = []
-            for layer in LAYERS:
-                pair_vals = [cca_lookup.get((model, layer, f"{f1}-{f2}"), float("nan"))
-                             for f1, f2 in FORMAT_PAIRS]
-                vals.append(f"{np.nanmean(pair_vals):.4f}")
-            lines.append(f"| {model} | {' | '.join(vals)} |")
-
+        lines.append("\n## Robustness: Procrustes")
         lines.append("\n### Mean Procrustes per Model x Layer")
         lines.append("| Model | " + " | ".join(f"L{l}" for l in LAYERS) + " |")
         lines.append("|-------|" + "|".join("------" for _ in LAYERS) + "|")
