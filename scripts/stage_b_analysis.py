@@ -851,7 +851,7 @@ def main():
         n_triples = 252
         n_bootstrap = 1000
         n_power_iter = 1000
-        n_perm = 2000
+        n_perm = 5000
         cache_dir = Path("/root/autodl-tmp/cache/hidden_states")
         ckpt_dir = PROJECT_ROOT / "artifacts" / "stage_b_analysis_v1_checkpoints"
         out_dir = PROJECT_ROOT / "artifacts" / "stage_b_analysis_v1"
