@@ -166,7 +166,6 @@ def main():
                         sp = SamplingParams(
                             n=1,
                             temperature=0.3,
-                            top_p=0.95,
                             max_tokens=fmt_cfg["max_tokens"],
                             stop=fmt_cfg["stop"],
                             include_stop_str_in_output=True,
@@ -184,7 +183,6 @@ def main():
                     sp = SamplingParams(
                         n=args.n_shots,
                         temperature=0.3,
-                        top_p=0.95,
                         max_tokens=fmt_cfg["max_tokens"],
                         stop=fmt_cfg["stop"],
                         include_stop_str_in_output=True,
