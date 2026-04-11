@@ -23,6 +23,14 @@ import sys
 import time
 from datetime import datetime, timezone
 
+# ── Force HuggingFace offline mode (Reviewer 二审 critical fix) ─────────
+# Hardcoded at module level so a single missing env var in launcher cannot
+# trigger 7-min metadata retry per model load (× 18 launches = 2.1h waste).
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["HF_DATASETS_OFFLINE"] = "1"
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+
 
 # ── CLI ─────────────────────────────────────────────────────────────────
 MODEL_REGISTRY = {
