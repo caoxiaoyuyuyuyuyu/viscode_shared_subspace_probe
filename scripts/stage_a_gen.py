@@ -29,9 +29,15 @@ os.environ.setdefault("HF_HOME", "/root/autodl-tmp/.hf_cache")
 
 # ── Config ─────────────────────────────────────────────────────────────
 MODEL_REGISTRY = {
+    # Original Qwen2.5 family (28 layers, hidden_dim=3584)
     "coder":     {"name": "Qwen/Qwen2.5-Coder-7B-Instruct", "type": "chat"},
     "viscoder2": {"name": "TIGER-Lab/VisCoder2-7B",          "type": "chat"},
     "qwen25":    {"name": "Qwen/Qwen2.5-7B",                 "type": "base"},
+    # Multi-model extension (D035/D036)
+    "codestral":  {"name": "mistralai/Codestral-22B-v0.1",                "type": "chat",
+                   "gpu_mem_util": 0.90, "max_model_len": 4096},
+    "starcoder2": {"name": "bigcode/starcoder2-15b-instruct-v0.1",       "type": "chat"},
+    "deepseek":   {"name": "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct", "type": "chat"},
 }
 
 FORMAT_CONFIG = {
@@ -155,14 +161,19 @@ def main():
     # ── Load model ────────────────────────────────────────────────────
     from vllm import LLM, SamplingParams
 
-    print(f"[stage_a_gen v3] Loading {model_cfg['name']}...")
+    # Adjust vLLM params for larger models
+    gpu_mem_util = model_cfg.get("gpu_mem_util", 0.92)
+    max_model_len = model_cfg.get("max_model_len", 4096)
+
+    print(f"[stage_a_gen v3] Loading {model_cfg['name']} "
+          f"(gpu_mem_util={gpu_mem_util}, max_model_len={max_model_len})...")
     t_load = time.perf_counter()
     llm = LLM(
         model=model_cfg["name"],
         dtype="half",
         enforce_eager=False,
-        max_model_len=4096,
-        gpu_memory_utilization=0.92,
+        max_model_len=max_model_len,
+        gpu_memory_utilization=gpu_mem_util,
         trust_remote_code=True,
     )
     print(f"[stage_a_gen v3] Model loaded in {time.perf_counter() - t_load:.1f}s")
