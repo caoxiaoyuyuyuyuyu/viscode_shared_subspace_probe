@@ -47,6 +47,11 @@ os.environ.setdefault("HF_HOME", "/root/autodl-tmp/.hf_cache")
 
 sys.stdout.reconfigure(line_buffering=True)
 
+# Monkey-patch: transformers renamed DynamicCache.get_usable_length → get_seq_length
+from transformers import DynamicCache
+if not hasattr(DynamicCache, 'get_usable_length'):
+    DynamicCache.get_usable_length = DynamicCache.get_seq_length
+
 
 # ── Config ─────────────────────────────────────────────────────────────
 DEFAULT_N_LAYER_POINTS = 7  # number of equidistant layers to sample
