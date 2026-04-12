@@ -41,7 +41,7 @@ MODEL_REGISTRY = {
 }
 
 FORMAT_CONFIG = {
-    "svg":  {"stop": ["</svg>"],             "max_tokens": 1024},
+    "svg":  {"stop": ["</svg>"],             "max_tokens": 2048},
     "tikz": {"stop": ["\\end{tikzpicture}"], "max_tokens": 1024},
     "asy":  {"stop": [],                      "max_tokens": 2048},
 }
