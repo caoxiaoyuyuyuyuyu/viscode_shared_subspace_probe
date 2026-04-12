@@ -50,23 +50,17 @@ sys.stdout.reconfigure(line_buffering=True)
 
 # ── Config ─────────────────────────────────────────────────────────────
 DEFAULT_N_LAYER_POINTS = 7  # number of equidistant layers to sample
-LEGACY_LAYERS = [4, 8, 12, 16, 20, 24, 28]  # original Qwen2.5-7B (28 layers) config
 
 MODEL_REGISTRY = {
     # Original Qwen2.5 family (28 layers, hidden_dim=3584)
-    "coder":       {"name": "Qwen/Qwen2.5-Coder-7B-Instruct", "type": "chat",
-                    "layers": [4, 8, 12, 16, 20, 24, 28]},
-    "viscoder2":   {"name": "TIGER-Lab/VisCoder2-7B",          "type": "chat",
-                    "layers": [4, 8, 12, 16, 20, 24, 28]},
-    "qwen25":      {"name": "Qwen/Qwen2.5-7B",                 "type": "base",
-                    "layers": [4, 8, 12, 16, 20, 24, 28]},
+    "coder":       {"name": "Qwen/Qwen2.5-Coder-7B-Instruct", "type": "chat"},
+    "viscoder2":   {"name": "TIGER-Lab/VisCoder2-7B",          "type": "chat"},
+    "qwen25":      {"name": "Qwen/Qwen2.5-7B",                 "type": "base"},
     # Multi-model extension (D035/D036/D037)
-    "codestral":   {"name": "mistralai/Codestral-22B-v0.1",         "type": "chat",
-                    "layers": [8, 16, 24, 32, 40, 48, 56]},       # 56L
-    "starcoder2":  {"name": "bigcode/starcoder2-15b-instruct-v0.1", "type": "chat",
-                    "layers": [6, 12, 17, 23, 28, 34, 40]},       # 40L
-    "deepseek":    {"name": "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct", "type": "chat",
-                    "layers": [4, 8, 12, 15, 19, 23, 27]},        # 27L
+    "codestral":   {"name": "mistralai/Codestral-22B-v0.1",         "type": "chat"},
+    "starcoder2":  {"name": "bigcode/starcoder2-15b-instruct-v0.1", "type": "chat"},
+    "deepseek":    {"name": "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct", "type": "chat"},
+    # Layers auto-computed: round(n_layers * (i+1) / 7) for i in 0..6
 }
 
 
@@ -327,13 +321,10 @@ def main():
     print(f"[stage_b] Loaded in {load_time:.1f}s — "
           f"layers={n_layers}, hidden_dim={hidden_dim}")
 
-    # Determine which layers to probe (priority: CLI > registry > auto-compute)
+    # Determine which layers to probe (priority: CLI override > formula)
     if args.layers:
         LAYERS = [int(x.strip()) for x in args.layers.split(",")]
         print(f"[stage_b] Using explicit CLI layers: {LAYERS}")
-    elif "layers" in model_cfg:
-        LAYERS = model_cfg["layers"]
-        print(f"[stage_b] Using registry layers for {args.model}: {LAYERS}")
     else:
         LAYERS = compute_equidistant_layers(n_layers, args.n_layer_points)
         print(f"[stage_b] Auto-computed {args.n_layer_points} equidistant layers "
