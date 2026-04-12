@@ -304,7 +304,7 @@ def run_pwcca_perm_null(data, layers, n_perm=300):
 
 # ── Main ─────────────────────────────────────────────────────────────
 def analyze_one_model(model, cache_dir, out_dir, n_perm, n_bootstrap, n_triples,
-                      skip_pwcca_perm=False):
+                      skip_pwcca_perm=False, pwcca_perm_only=False, pwcca_perm_n=300):
     """Full analysis pipeline for one model."""
     print(f"\n{'='*60}")
     print(f"  Model: {model}")
@@ -329,6 +329,27 @@ def analyze_one_model(model, cache_dir, out_dir, n_perm, n_bootstrap, n_triples,
     # Load data
     print(f"\n  Loading hidden states...")
     data = load_hidden_states(cache_dir, model, layers, hidden_dim, n_triples)
+
+    # PWCCA-perm-only fast path
+    if pwcca_perm_only:
+        print(f"\n  === PWCCA Permutation Null ONLY ({pwcca_perm_n} perms) ===")
+        pwcca_perm = run_pwcca_perm_null(data, layers, n_perm=pwcca_perm_n)
+        print(f"    obs={pwcca_perm['observed']:.4f}, null={pwcca_perm['null_mean']:.4f}, "
+              f"p={pwcca_perm['p_value']:.6f}")
+        _save_json(model_out / "pwcca_perm_null.json", pwcca_perm)
+        elapsed = time.time() - t0
+        summary = {
+            "model": model, "layers": layers, "hidden_dim": hidden_dim,
+            "n_triples": n_triples, "pwcca_perm_only": True,
+            "pwcca_perm_n": pwcca_perm_n, "elapsed_s": round(elapsed, 1),
+            "pwcca_perm_observed": pwcca_perm["observed"],
+            "pwcca_perm_null_mean": pwcca_perm["null_mean"],
+            "pwcca_perm_p": pwcca_perm["p_value"],
+        }
+        _save_json(model_out / "summary_pwcca_perm.json", summary)
+        print(f"\n  {model} PWCCA-perm-only DONE in {elapsed:.1f}s")
+        del data; gc.collect()
+        return summary
 
     # Raw Gram matrices
     print(f"  Computing Gram matrices...")
@@ -366,8 +387,8 @@ def analyze_one_model(model, cache_dir, out_dir, n_perm, n_bootstrap, n_triples,
     # PWCCA permutation null (optional — slow on high-dim)
     pwcca_perm_p = None
     if not skip_pwcca_perm:
-        print(f"\n  === PWCCA Permutation Null (300 perms) ===")
-        pwcca_perm = run_pwcca_perm_null(data, layers, n_perm=300)
+        print(f"\n  === PWCCA Permutation Null ({pwcca_perm_n} perms) ===")
+        pwcca_perm = run_pwcca_perm_null(data, layers, n_perm=pwcca_perm_n)
         print(f"    obs={pwcca_perm['observed']:.4f}, null={pwcca_perm['null_mean']:.4f}, "
               f"p={pwcca_perm['p_value']:.6f}")
         _save_json(model_out / "pwcca_perm_null.json", pwcca_perm)
@@ -420,6 +441,10 @@ def main():
                         help="Number of triples (default: auto from summary.json)")
     parser.add_argument("--skip-pwcca-perm", action="store_true",
                         help="Skip PWCCA permutation null (slow on high-dim)")
+    parser.add_argument("--pwcca-perm-only", action="store_true",
+                        help="Run ONLY PWCCA permutation null (skip CKA/bootstrap/A2/PWCCA)")
+    parser.add_argument("--pwcca-perm-n", type=int, default=300,
+                        help="Number of PWCCA permutations (default: 300)")
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
 
@@ -448,6 +473,8 @@ def main():
             n_bootstrap=args.n_bootstrap,
             n_triples=args.n_triples,
             skip_pwcca_perm=args.skip_pwcca_perm,
+            pwcca_perm_only=args.pwcca_perm_only,
+            pwcca_perm_n=args.pwcca_perm_n,
         )
         all_summaries[model] = summary
 
