@@ -94,11 +94,16 @@ def fit_classifier(X, y):
 
 
 def project_out(H, W):
-    """Project H to orthogonal complement of row space of W."""
-    WWT = W @ W.T
-    WWT_inv = np.linalg.inv(WWT)
-    P = W.T @ WWT_inv @ W
-    return H - H @ P
+    """Project H to orthogonal complement of row space of W.
+
+    Uses QR decomposition for numerical stability (avoids inv of near-singular
+    WWT after many iterations of residualization).
+    """
+    # QR on W^T gives orthonormal basis Q for column space of W^T = row space of W
+    Q, _ = np.linalg.qr(W.T, mode="reduced")  # Q: (d, k) orthonormal
+    # Project out: H_res = H - H @ Q @ Q^T
+    HQ = H @ Q          # (n, k)
+    return H - HQ @ Q.T  # (n, d)
 
 
 # ── CKA functions ──────────────────────────────────────────────────
