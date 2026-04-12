@@ -232,13 +232,18 @@ def run_cka(raw_grams):
 
 
 # ── D. Bootstrap CI ─────────────────────────────────────────────────
-def run_bootstrap_ci(raw_grams, n_triples, n_bootstrap):
-    """Bootstrap 95% CI for CKA per (model, layer)."""
-    print(f"\n=== D. Bootstrap CI ({n_bootstrap} samples) === (RSS={mem_gb():.2f} GB)")
+def run_bootstrap_ci(raw_grams, n_triples, n_bootstrap, frac=0.8):
+    """Subsampling 95% CI for CKA per (model, layer).
+
+    Uses subsampling without replacement (frac=80%) to avoid Gram matrix
+    diagonal inflation that occurs with bootstrap (replace=True).
+    """
+    print(f"\n=== D. Subsampling CI ({n_bootstrap} samples, frac={frac}) === (RSS={mem_gb():.2f} GB)")
     t0 = time.time()
 
     n = n_triples
-    H = np.eye(n, dtype=np.float32) - np.float32(1.0 / n)
+    m = int(n * frac)
+    H = np.eye(m, dtype=np.float32) - np.float32(1.0 / m)
     rng = np.random.RandomState(SEED)
     rows = []
 
@@ -246,7 +251,7 @@ def run_bootstrap_ci(raw_grams, n_triples, n_bootstrap):
         for li, layer in enumerate(LAYERS):
             boot_means = np.empty(n_bootstrap, dtype=np.float32)
             for b in range(n_bootstrap):
-                idx = rng.choice(n, size=n, replace=True)
+                idx = rng.choice(n, size=m, replace=False)
                 pair_ckas = []
                 for f1, f2 in FORMAT_PAIRS:
                     KX = raw_grams[model][f1][li][np.ix_(idx, idx)]

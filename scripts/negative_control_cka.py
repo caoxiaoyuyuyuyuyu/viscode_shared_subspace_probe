@@ -53,13 +53,14 @@ def permutation_test(X, Y, n_perm=N_PERM, seed=SEED):
     p_value = float(np.mean(null_dist >= observed))
     return observed, p_value, float(null_dist.mean()), float(null_dist.std())
 
-def bootstrap_ci(X, Y, n_boot=1000, seed=SEED):
-    """Bootstrap 95% CI for CKA."""
+def bootstrap_ci(X, Y, n_boot=1000, seed=SEED, frac=0.8):
+    """Subsampling 95% CI for CKA (without replacement to avoid Gram diagonal inflation)."""
     rng = np.random.RandomState(seed + 1)
     n = X.shape[0]
+    m = int(n * frac)
     boots = []
     for _ in range(n_boot):
-        idx = rng.choice(n, n, replace=True)
+        idx = rng.choice(n, m, replace=False)
         boots.append(cka(X[idx], Y[idx]))
     boots = np.array(boots)
     return float(np.percentile(boots, 2.5)), float(np.percentile(boots, 97.5))
