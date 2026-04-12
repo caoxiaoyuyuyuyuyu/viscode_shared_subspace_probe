@@ -2,8 +2,11 @@
 """Stage B: HF teacher-forcing probe — hidden state extraction.
 
 For each (model, format, triple), teacher-forces reference code through
-the model and extracts residual stream at layers [4,8,12,16,20,24,28].
-Mean-pools over code-token positions → saves [7, hidden_dim] per sample.
+the model and extracts residual stream at equidistant layers.
+Mean-pools over code-token positions → saves [n_layers_sampled, hidden_dim] per sample.
+
+Supports multi-model extension: layers are auto-computed as equidistant
+points from the model's num_hidden_layers (default 7 points).
 
 Pre-reg: §3 (probe pool), §5 (aggregation), §12 (tool-stack split).
 
@@ -13,8 +16,14 @@ Usage:
       --triples-path outputs/stage_a/sbert_triples.json \
       --out-dir /root/autodl-tmp/cache/hidden_states
 
-  # Step 2: extract hidden states (per model×format)
-  python stage_b_probe.py --model coder --format svg --gpu 0 \
+  # Step 2: extract hidden states (auto layers for any model)
+  python stage_b_probe.py --model starcoder2 --format svg --gpu 0 \
+      --triples-path outputs/stage_a/sbert_triples.json \
+      --out-dir /root/autodl-tmp/cache/hidden_states
+
+  # Step 2 (alt): explicit layer override
+  python stage_b_probe.py --model codestral --format tikz --gpu 0 \
+      --layers 5,10,15,20,25,30,35 \
       --triples-path outputs/stage_a/sbert_triples.json \
       --out-dir /root/autodl-tmp/cache/hidden_states
 """
@@ -40,13 +49,30 @@ sys.stdout.reconfigure(line_buffering=True)
 
 
 # ── Config ─────────────────────────────────────────────────────────────
-LAYERS = [4, 8, 12, 16, 20, 24, 28]  # 1-indexed layer numbers (pre-reg §5, v3.3 revision)
+DEFAULT_N_LAYER_POINTS = 7  # number of equidistant layers to sample
+LEGACY_LAYERS = [4, 8, 12, 16, 20, 24, 28]  # original Qwen2.5-7B (28 layers) config
 
 MODEL_REGISTRY = {
-    "coder":     {"name": "Qwen/Qwen2.5-Coder-7B-Instruct", "type": "chat"},
-    "viscoder2": {"name": "TIGER-Lab/VisCoder2-7B",          "type": "chat"},
-    "qwen25":    {"name": "Qwen/Qwen2.5-7B",                 "type": "base"},
+    # Original Qwen2.5 family (28 layers, hidden_dim=3584)
+    "coder":       {"name": "Qwen/Qwen2.5-Coder-7B-Instruct", "type": "chat",
+                    "layers": [4, 8, 12, 16, 20, 24, 28]},
+    "viscoder2":   {"name": "TIGER-Lab/VisCoder2-7B",          "type": "chat",
+                    "layers": [4, 8, 12, 16, 20, 24, 28]},
+    "qwen25":      {"name": "Qwen/Qwen2.5-7B",                 "type": "base",
+                    "layers": [4, 8, 12, 16, 20, 24, 28]},
+    # Multi-model extension (D035/D036/D037)
+    "codestral":   {"name": "mistralai/Codestral-22B-v0.1",         "type": "chat",
+                    "layers": [8, 16, 24, 32, 40, 48, 56]},       # 56L
+    "starcoder2":  {"name": "bigcode/starcoder2-15b-instruct-v0.1", "type": "chat",
+                    "layers": [6, 12, 16, 23, 28, 34, 40]},       # 40L
+    "deepseek":    {"name": "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct", "type": "chat",
+                    "layers": [4, 8, 12, 15, 19, 23, 27]},        # 27L
 }
+
+
+def compute_equidistant_layers(n_layers, n_points=DEFAULT_N_LAYER_POINTS):
+    """Compute n_points equidistant 1-indexed layer numbers spanning 1..n_layers."""
+    return [round(n_layers * (i + 1) / n_points) for i in range(n_points)]
 
 # Data paths on server (matching step2_sbert_matching.py)
 DATA_ROOT = "/root/autodl-tmp/viscode_shared_subspace_probe/data"
@@ -62,7 +88,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Stage B: HF teacher-forcing probe")
     p.add_argument("--model", choices=list(MODEL_REGISTRY.keys()),
                    help="Model to probe (omit with --resolve-only)")
-    p.add_argument("--format", choices=["svg", "tikz", "asy"],
+    p.add_argument("--format", choices=["svg", "tikz", "asy", "python"],
                    help="Format to probe (omit with --resolve-only)")
     p.add_argument("--gpu", type=int, default=0,
                    help="GPU index for logging/audit only; actual device chosen via external CUDA_VISIBLE_DEVICES")
@@ -76,6 +102,12 @@ def parse_args():
                    help="Only resolve triples (no model loading)")
     p.add_argument("--max-seq-len", type=int, default=4096,
                    help="Max sequence length (truncate code if exceeded)")
+    p.add_argument("--layers", type=str, default="",
+                   help="Explicit comma-separated layer indices (e.g. '4,8,12,16,20,24,28'). "
+                        "If empty, auto-computes equidistant layers from model config.")
+    p.add_argument("--n-layer-points", type=int, default=DEFAULT_N_LAYER_POINTS,
+                   help=f"Number of equidistant layers to sample (default {DEFAULT_N_LAYER_POINTS}). "
+                        "Ignored if --layers is set.")
     return p.parse_args()
 
 
@@ -272,7 +304,7 @@ def main():
     fmt = args.format
 
     print(f"[stage_b] model={args.model} format={fmt} gpu={args.gpu} "
-          f"triples={len(resolved)} layers={LAYERS}")
+          f"triples={len(resolved)}")
 
     # ── Load model (fp16, no quantization — pre-reg §12) ──
     print(f"[stage_b] Loading {model_cfg['name']} (fp16)...")
@@ -294,6 +326,18 @@ def main():
     load_time = time.perf_counter() - t0
     print(f"[stage_b] Loaded in {load_time:.1f}s — "
           f"layers={n_layers}, hidden_dim={hidden_dim}")
+
+    # Determine which layers to probe (priority: CLI > registry > auto-compute)
+    if args.layers:
+        LAYERS = [int(x.strip()) for x in args.layers.split(",")]
+        print(f"[stage_b] Using explicit CLI layers: {LAYERS}")
+    elif "layers" in model_cfg:
+        LAYERS = model_cfg["layers"]
+        print(f"[stage_b] Using registry layers for {args.model}: {LAYERS}")
+    else:
+        LAYERS = compute_equidistant_layers(n_layers, args.n_layer_points)
+        print(f"[stage_b] Auto-computed {args.n_layer_points} equidistant layers "
+              f"for {n_layers}-layer model: {LAYERS}")
 
     # Validate requested layers exist (fail-fast, no silent clamp)
     for l in LAYERS:
