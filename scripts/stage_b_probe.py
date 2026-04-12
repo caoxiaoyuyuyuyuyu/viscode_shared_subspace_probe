@@ -47,10 +47,11 @@ os.environ.setdefault("HF_HOME", "/root/autodl-tmp/.hf_cache")
 
 sys.stdout.reconfigure(line_buffering=True)
 
-# Monkey-patch: transformers renamed DynamicCache.get_usable_length → get_seq_length
+# Monkey-patch: transformers ≥4.57 removed DynamicCache.get_usable_length;
+# DeepSeek's remote modeling code still calls it with (kv_seq_len, layer_idx).
 from transformers import DynamicCache
 if not hasattr(DynamicCache, 'get_usable_length'):
-    DynamicCache.get_usable_length = DynamicCache.get_seq_length
+    DynamicCache.get_usable_length = lambda self, kv_seq_len, layer_idx=0: self.get_seq_length(layer_idx)
 
 
 # ── Config ─────────────────────────────────────────────────────────────
