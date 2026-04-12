@@ -303,7 +303,8 @@ def run_pwcca_perm_null(data, layers, n_perm=300):
 
 
 # ── Main ─────────────────────────────────────────────────────────────
-def analyze_one_model(model, cache_dir, out_dir, n_perm, n_bootstrap, n_triples):
+def analyze_one_model(model, cache_dir, out_dir, n_perm, n_bootstrap, n_triples,
+                      skip_pwcca_perm=False):
     """Full analysis pipeline for one model."""
     print(f"\n{'='*60}")
     print(f"  Model: {model}")
@@ -362,12 +363,17 @@ def analyze_one_model(model, cache_dir, out_dir, n_perm, n_bootstrap, n_triples)
     pwcca_rows = run_pwcca(data, layers)
     _save_json(model_out / "pwcca_per_layer_per_pair.json", pwcca_rows)
 
-    # PWCCA permutation null (quick, 300 perms)
-    print(f"\n  === PWCCA Permutation Null (300 perms) ===")
-    pwcca_perm = run_pwcca_perm_null(data, layers, n_perm=300)
-    print(f"    obs={pwcca_perm['observed']:.4f}, null={pwcca_perm['null_mean']:.4f}, "
-          f"p={pwcca_perm['p_value']:.6f}")
-    _save_json(model_out / "pwcca_perm_null.json", pwcca_perm)
+    # PWCCA permutation null (optional — slow on high-dim)
+    pwcca_perm_p = None
+    if not skip_pwcca_perm:
+        print(f"\n  === PWCCA Permutation Null (300 perms) ===")
+        pwcca_perm = run_pwcca_perm_null(data, layers, n_perm=300)
+        print(f"    obs={pwcca_perm['observed']:.4f}, null={pwcca_perm['null_mean']:.4f}, "
+              f"p={pwcca_perm['p_value']:.6f}")
+        _save_json(model_out / "pwcca_perm_null.json", pwcca_perm)
+        pwcca_perm_p = pwcca_perm["p_value"]
+    else:
+        print(f"\n  === PWCCA Permutation Null: SKIPPED (--skip-pwcca-perm) ===")
 
     elapsed = time.time() - t0
 
@@ -379,13 +385,14 @@ def analyze_one_model(model, cache_dir, out_dir, n_perm, n_bootstrap, n_triples)
         "n_triples": n_triples,
         "n_perm": n_perm,
         "n_bootstrap": n_bootstrap,
+        "skip_pwcca_perm": skip_pwcca_perm,
         "elapsed_s": round(elapsed, 1),
         "cka_mean_all_layers": round(float(np.mean([r["cka"] for r in cka_rows])), 6),
         "cka_per_pair_mean": perm_result["observed_per_pair"],
         "a2_p_value": perm_result["p_value"],
         "a2_observed_vs_null": f"{perm_result['observed_cka_mean']:.4f} vs {perm_result['null_mean']:.4f}",
         "pwcca_mean": round(float(np.mean([r["pwcca"] for r in pwcca_rows])), 6),
-        "pwcca_perm_p": pwcca_perm["p_value"],
+        "pwcca_perm_p": pwcca_perm_p,
     }
     _save_json(model_out / "summary.json", summary)
     print(f"\n  {model} DONE in {elapsed:.1f}s")
@@ -411,6 +418,8 @@ def main():
     parser.add_argument("--n-bootstrap", type=int, default=1000)
     parser.add_argument("--n-triples", type=int, default=None,
                         help="Number of triples (default: auto from summary.json)")
+    parser.add_argument("--skip-pwcca-perm", action="store_true",
+                        help="Skip PWCCA permutation null (slow on high-dim)")
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
 
@@ -438,6 +447,7 @@ def main():
             n_perm=args.n_perm,
             n_bootstrap=args.n_bootstrap,
             n_triples=args.n_triples,
+            skip_pwcca_perm=args.skip_pwcca_perm,
         )
         all_summaries[model] = summary
 
@@ -445,11 +455,12 @@ def main():
     print(f"\n{'='*60}")
     print(f"  CROSS-FAMILY COMPARISON")
     print(f"{'='*60}")
-    print(f"{'Model':<15} {'CKA mean':>10} {'A2 p':>8} {'PWCCA':>10} {'PWCCA p':>8}")
-    print(f"{'-'*55}")
+    print(f"{'Model':<15} {'CKA mean':>10} {'A2 p':>8} {'PWCCA':>10} {'PWCCA p':>10}")
+    print(f"{'-'*57}")
     for model, s in all_summaries.items():
+        pwcca_p_str = f"{s['pwcca_perm_p']:>10.4f}" if s['pwcca_perm_p'] is not None else "  skipped "
         print(f"{model:<15} {s['cka_mean_all_layers']:>10.4f} {s['a2_p_value']:>8.4f} "
-              f"{s['pwcca_mean']:>10.4f} {s['pwcca_perm_p']:>8.4f}")
+              f"{s['pwcca_mean']:>10.4f} {pwcca_p_str}")
 
     # Qwen reference (if available)
     qwen_models = ["coder", "viscoder2", "qwen25"]
