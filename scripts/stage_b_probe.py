@@ -64,7 +64,7 @@ MODEL_REGISTRY = {
     "codestral":   {"name": "mistralai/Codestral-22B-v0.1",         "type": "chat",
                     "layers": [8, 16, 24, 32, 40, 48, 56]},       # 56L
     "starcoder2":  {"name": "bigcode/starcoder2-15b-instruct-v0.1", "type": "chat",
-                    "layers": [6, 12, 16, 23, 28, 34, 40]},       # 40L
+                    "layers": [6, 12, 17, 23, 28, 34, 40]},       # 40L
     "deepseek":    {"name": "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct", "type": "chat",
                     "layers": [4, 8, 12, 15, 19, 23, 27]},        # 27L
 }
