@@ -250,7 +250,7 @@ def run_verify(model, data, layers, n_triples, out_dir):
 
 # ── Iterative Mode ─────────────────────────────────────────────────
 def run_iterative(model, data, layers, n_triples, out_dir, n_perm, n_bootstrap,
-                  acc_threshold=0.50, max_iterations=50):
+                  acc_threshold=0.40, max_iterations=50, hidden_dim=None):
     """Iteratively project out format subspace until classifier drops below threshold."""
     print(f"\n  === ITERATIVE RESIDUALIZATION ===")
     print(f"  Threshold: format accuracy < {acc_threshold}")
@@ -291,12 +291,14 @@ def run_iterative(model, data, layers, n_triples, out_dir, n_perm, n_bootstrap,
             cur_var = sum(np.var(fmt_data[fmt]) for fmt in FORMATS)
             var_retained = cur_var / orig_var if orig_var > 0 else 0
 
+            dims_ratio = total_dims_removed / hidden_dim if hidden_dim else 0
             iter_result = {
                 "iteration": iteration,
                 "format_accuracy_cv": round(cv_acc, 4),
                 "format_accuracy_std": round(cv_std, 4),
                 "W_rank": W_rank,
                 "total_dims_removed": total_dims_removed,
+                "dims_removed_ratio": round(dims_ratio, 4),
                 "cka_mean": round(cka_mean, 6),
                 "cka_per_pair": {f"{f1}-{f2}": round(v, 6)
                                  for (f1, f2), v in zip(FORMAT_PAIRS, cka_per_pair)},
@@ -305,8 +307,8 @@ def run_iterative(model, data, layers, n_triples, out_dir, n_perm, n_bootstrap,
             iterations.append(iter_result)
 
             print(f"    iter {iteration}: acc={cv_acc:.4f}(±{cv_std:.4f}), "
-                  f"CKA={cka_mean:.4f}, dims_removed={total_dims_removed}, "
-                  f"var_ret={var_retained:.4f}")
+                  f"CKA={cka_mean:.4f}, dims_removed={total_dims_removed}"
+                  f"({dims_ratio:.1%}), var_ret={var_retained:.4f}")
 
             # Check stopping condition
             if cv_acc < acc_threshold:
@@ -338,10 +340,12 @@ def run_iterative(model, data, layers, n_triples, out_dir, n_perm, n_bootstrap,
             print(f"    A2: obs={a2_result['observed']:.4f}, null={a2_result['null_mean']:.4f}, "
                   f"p={a2_result['p_value']}")
 
+        final_dims_ratio = total_dims_removed / hidden_dim if hidden_dim else 0
         layer_result = {
             "layer": layer,
             "n_iterations": len(iterations),
             "total_dims_removed": total_dims_removed,
+            "dims_removed_ratio": round(final_dims_ratio, 4),
             "final_format_accuracy": final_acc,
             "original_cka": round(orig_cka, 6),
             "final_cka": round(final_cka, 6),
@@ -430,13 +434,15 @@ def run_iterative(model, data, layers, n_triples, out_dir, n_perm, n_bootstrap,
     print(f"\n  {'='*70}")
     print(f"  ITERATIVE RESIDUALIZATION SUMMARY: {model}")
     print(f"  {'='*70}")
-    print(f"  {'Layer':<8} {'Iters':>6} {'Dims':>6} {'FinalAcc':>10} {'OrigCKA':>10} "
+    print(f"  {'Layer':<8} {'Iters':>6} {'Dims':>6} {'Dim%':>7} {'FinalAcc':>10} {'OrigCKA':>10} "
           f"{'FinalCKA':>10} {'Retained':>10}")
-    print(f"  {'-'*68}")
+    print(f"  {'-'*75}")
     for layer, r in all_layer_results.items():
+        dim_pct = r.get('dims_removed_ratio', 0) * 100
+        flag = " ⚠" if dim_pct > 30 else ""
         print(f"  L{layer:<6} {r['n_iterations']:>6} {r['total_dims_removed']:>6} "
-              f"{r['final_format_accuracy']:>10.4f} {r['original_cka']:>10.4f} "
-              f"{r['final_cka']:>10.4f} {r['cka_retained_pct']:>9.1f}%")
+              f"{dim_pct:>6.1f}% {r['final_format_accuracy']:>10.4f} {r['original_cka']:>10.4f} "
+              f"{r['final_cka']:>10.4f} {r['cka_retained_pct']:>9.1f}%{flag}")
 
     return all_layer_results
 
@@ -451,7 +457,7 @@ def main():
     parser.add_argument("--n-perm", type=int, default=5000)
     parser.add_argument("--n-bootstrap", type=int, default=1000)
     parser.add_argument("--n-triples", type=int, default=None)
-    parser.add_argument("--acc-threshold", type=float, default=0.50,
+    parser.add_argument("--acc-threshold", type=float, default=0.40,
                         help="Stop iterating when format accuracy drops below this")
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
@@ -484,7 +490,8 @@ def main():
         elif args.mode == "iterative":
             run_iterative(model, data, layers, n_triples, out_dir,
                           n_perm=args.n_perm, n_bootstrap=args.n_bootstrap,
-                          acc_threshold=args.acc_threshold)
+                          acc_threshold=args.acc_threshold,
+                          hidden_dim=hidden_dim)
 
         del data
         gc.collect()
