@@ -364,8 +364,9 @@ def run_iterative(model, data, layers, n_triples, out_dir, n_perm, n_bootstrap,
 
         all_layer_results[layer] = layer_result
 
-    # Save
-    _save_json(out_dir / model / "iterative_residualization.json", all_layer_results)
+        # Incremental save after each layer
+        _save_json(out_dir / model / "iterative_residualization.json", all_layer_results)
+        print(f"    [saved incremental results to iterative_residualization.json]")
 
     # A2 aggregate across layers (using final residualized data)
     if n_perm > 0:
