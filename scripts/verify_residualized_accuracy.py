@@ -861,6 +861,89 @@ def run_pca_mink(model, data, layers, n_triples, out_dir, hidden_dim,
     return all_layer_results
 
 
+def run_pca_pc2_only(model, data, layers, n_triples, out_dir, hidden_dim):
+    """Project out individual PCs to isolate which PC encodes format.
+
+    For each layer, computes format accuracy after removing:
+    - PC1 only
+    - PC2 only
+    - PC1+PC2 (same as pca-mink k=2)
+    This disambiguates whether format is in PC2 alone or the PC1+PC2 joint subspace.
+    """
+    print(f"\n  === PCA PC2-ONLY ABLATION ===")
+
+    all_layer_results = {}
+
+    for li, layer in enumerate(layers):
+        print(f"\n  --- Layer L{layer} ---")
+
+        fmt_data_orig = {fmt: data[fmt][:n_triples, li, :].copy() for fmt in FORMATS}
+
+        # SVD on concatenated data
+        X_all = np.concatenate([fmt_data_orig[fmt] for fmt in FORMATS], axis=0)
+        X_mean = X_all.mean(axis=0, keepdims=True)
+        X_centered = X_all - X_mean
+        _, S, Vt = np.linalg.svd(X_centered, full_matrices=False)
+
+        conditions = {
+            "original": None,       # no removal
+            "remove_pc1": [0],      # remove PC1 only
+            "remove_pc2": [1],      # remove PC2 only
+            "remove_pc1_pc2": [0, 1],  # remove PC1+PC2
+        }
+
+        layer_result = {"layer": layer}
+
+        for cond_name, pc_indices in conditions.items():
+            if pc_indices is None:
+                # Original, no projection
+                X_eval = np.concatenate([fmt_data_orig[fmt] for fmt in FORMATS], axis=0)
+            else:
+                Q_pca = Vt[pc_indices].T  # (hidden_dim, len(pc_indices))
+                fmt_data_proj = {}
+                for fmt in FORMATS:
+                    centered = fmt_data_orig[fmt] - X_mean
+                    HQ = centered @ Q_pca
+                    fmt_data_proj[fmt] = centered - HQ @ Q_pca.T + X_mean
+                X_eval = np.concatenate([fmt_data_proj[fmt] for fmt in FORMATS], axis=0)
+
+            y = np.concatenate([np.full(n_triples, i) for i in range(len(FORMATS))])
+            _, acc, std = fit_classifier(X_eval, y)
+            layer_result[cond_name] = {"accuracy": round(acc, 4), "std": round(std, 4)}
+            print(f"    {cond_name}: acc={acc:.4f} (±{std:.4f})")
+
+        # Interpretation
+        pc2_acc = layer_result["remove_pc2"]["accuracy"]
+        pc12_acc = layer_result["remove_pc1_pc2"]["accuracy"]
+        if pc2_acc < 0.50:
+            layer_result["interpretation"] = "PC2_sufficient"
+        elif pc12_acc < 0.50:
+            layer_result["interpretation"] = "PC1_PC2_joint"
+        else:
+            layer_result["interpretation"] = "neither_sufficient"
+
+        all_layer_results[layer] = layer_result
+
+        # Incremental save
+        _save_json(out_dir / model / "pca_pc2_only.json", all_layer_results)
+
+    # Summary table
+    print(f"\n  {'='*80}")
+    print(f"  PCA PC2-ONLY ABLATION SUMMARY: {model}")
+    print(f"  {'='*80}")
+    print(f"  {'Layer':<7} | {'Original':>10} {'PC1 removed':>13} {'PC2 removed':>13} "
+          f"{'PC1+2 removed':>15} | {'Interpretation'}")
+    print(f"  {'-'*80}")
+    for layer, r in all_layer_results.items():
+        print(f"  L{layer:<5} | {r['original']['accuracy']:>10.4f} "
+              f"{r['remove_pc1']['accuracy']:>13.4f} "
+              f"{r['remove_pc2']['accuracy']:>13.4f} "
+              f"{r['remove_pc1_pc2']['accuracy']:>15.4f} | "
+              f"{r['interpretation']}")
+
+    return all_layer_results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Verify/Iterative Residualized CKA")
     parser.add_argument("--models", nargs="+", required=True)
@@ -868,7 +951,8 @@ def main():
                         default="/root/autodl-tmp/cache/hidden_states")
     parser.add_argument("--out-dir", type=str, default=None)
     parser.add_argument("--mode", choices=["verify", "iterative", "random-baseline",
-                                          "pca-baseline", "pca-mink"], default="verify")
+                                          "pca-baseline", "pca-mink",
+                                          "pca-pc2-only"], default="verify")
     parser.add_argument("--n-perm", type=int, default=5000)
     parser.add_argument("--n-bootstrap", type=int, default=1000)
     parser.add_argument("--n-triples", type=int, default=None)
@@ -928,6 +1012,9 @@ def main():
                          hidden_dim=hidden_dim,
                          n_perm=args.n_perm, n_bootstrap=args.n_bootstrap,
                          acc_threshold=args.acc_threshold)
+        elif args.mode == "pca-pc2-only":
+            run_pca_pc2_only(model, data, layers, n_triples, out_dir,
+                             hidden_dim=hidden_dim)
 
         del data
         gc.collect()
