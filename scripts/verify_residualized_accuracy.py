@@ -724,6 +724,138 @@ def run_pca_baseline(model, data, layers, n_triples, out_dir, hidden_dim,
     return all_layer_results
 
 
+def run_pca_mink(model, data, layers, n_triples, out_dir, hidden_dim,
+                 n_perm, n_bootstrap, acc_threshold=0.50, max_k=100):
+    """PCA format-removal: find minimum k top-PCs to drop format accuracy below threshold.
+
+    For each layer:
+    1. Compute SVD on concatenated [svg+tikz+asy] data
+    2. Incrementally remove top-k PCs (k=1,2,3,...) until format acc < threshold
+    3. At that k, compute CKA + bootstrap CI + A2 permutation test
+    """
+    print(f"\n  === PCA FORMAT-REMOVAL (min-k, threshold={acc_threshold}) ===")
+
+    all_layer_results = {}
+
+    for li, layer in enumerate(layers):
+        print(f"\n  --- Layer L{layer} ---")
+
+        fmt_data_orig = {fmt: data[fmt][:n_triples, li, :].copy() for fmt in FORMATS}
+        orig_var = sum(np.var(fmt_data_orig[fmt]) for fmt in FORMATS)
+
+        # Original CKA
+        orig_cka, _ = compute_cka_from_data(fmt_data_orig, n_triples)
+
+        # SVD on concatenated data
+        X_all = np.concatenate([fmt_data_orig[fmt] for fmt in FORMATS], axis=0)
+        X_mean = X_all.mean(axis=0, keepdims=True)
+        X_centered = X_all - X_mean
+        _, S, Vt = np.linalg.svd(X_centered, full_matrices=False)
+
+        # Incrementally remove top-k PCs
+        k_found = None
+        k_search_log = []
+
+        for k in range(1, min(max_k, len(S)) + 1):
+            Q_pca = Vt[:k].T  # (hidden_dim, k)
+
+            fmt_data_pca = {}
+            for fmt in FORMATS:
+                centered = fmt_data_orig[fmt] - X_mean
+                HQ = centered @ Q_pca
+                fmt_data_pca[fmt] = centered - HQ @ Q_pca.T + X_mean
+
+            # Format accuracy
+            X_pca = np.concatenate([fmt_data_pca[fmt] for fmt in FORMATS], axis=0)
+            y = np.concatenate([np.full(n_triples, i) for i in range(len(FORMATS))])
+            _, pca_acc, pca_std = fit_classifier(X_pca, y)
+
+            k_search_log.append({"k": k, "acc": round(pca_acc, 4), "std": round(pca_std, 4)})
+            print(f"    k={k}: acc={pca_acc:.4f} (±{pca_std:.4f})")
+
+            if pca_acc < acc_threshold:
+                k_found = k
+                break
+
+        if k_found is None:
+            print(f"    WARNING: format acc never dropped below {acc_threshold} up to k={max_k}")
+            k_found = k  # use last k tested
+
+        # Recompute final projection at k_found
+        Q_pca = Vt[:k_found].T
+        fmt_data_final = {}
+        for fmt in FORMATS:
+            centered = fmt_data_orig[fmt] - X_mean
+            HQ = centered @ Q_pca
+            fmt_data_final[fmt] = centered - HQ @ Q_pca.T + X_mean
+
+        # Final metrics
+        pca_var = sum(np.var(fmt_data_final[fmt]) for fmt in FORMATS)
+        var_retained = pca_var / orig_var if orig_var > 0 else 0
+
+        cka_mean, cka_per_pair = compute_cka_from_data(fmt_data_final, n_triples)
+
+        X_final = np.concatenate([fmt_data_final[fmt] for fmt in FORMATS], axis=0)
+        y = np.concatenate([np.full(n_triples, i) for i in range(len(FORMATS))])
+        _, final_acc, final_std = fit_classifier(X_final, y)
+
+        # Bootstrap CI
+        boot_ci = None
+        if n_bootstrap > 0:
+            print(f"    Computing bootstrap CI (B={n_bootstrap})...")
+            boot_ci = run_bootstrap_ci(fmt_data_final, n_triples, n_bootstrap)
+            print(f"    Bootstrap: {boot_ci['mean']:.4f} [{boot_ci['ci_low']:.4f}, {boot_ci['ci_high']:.4f}]")
+
+        # A2 permutation
+        a2_result = None
+        if n_perm > 0:
+            print(f"    Computing A2 permutation ({n_perm} perms)...")
+            a2_result = run_a2_perm(fmt_data_final, n_triples, n_perm)
+            print(f"    A2: obs={a2_result['observed']:.4f}, null={a2_result['null_mean']:.4f}, p={a2_result['p_value']}")
+
+        layer_result = {
+            "layer": layer,
+            "k_min": k_found,
+            "k_ratio": round(k_found / hidden_dim, 6),
+            "final_accuracy": round(final_acc, 4),
+            "final_accuracy_std": round(final_std, 4),
+            "original_cka": round(orig_cka, 6),
+            "pca_cka": round(cka_mean, 6),
+            "cka_delta_pct": round((cka_mean - orig_cka) / orig_cka * 100, 1) if orig_cka > 0 else 0,
+            "pca_cka_per_pair": {f"{f1}-{f2}": round(v, 6)
+                                 for (f1, f2), v in zip(FORMAT_PAIRS, cka_per_pair)},
+            "variance_retained": round(float(var_retained), 4),
+            "k_search_log": k_search_log,
+        }
+        if boot_ci:
+            layer_result["bootstrap_ci"] = boot_ci
+        if a2_result:
+            layer_result["a2_permutation"] = a2_result
+
+        all_layer_results[layer] = layer_result
+
+        # Incremental save
+        _save_json(out_dir / model / "pca_mink.json", all_layer_results)
+
+        print(f"    RESULT: k={k_found}, CKA={cka_mean:.4f} (orig={orig_cka:.4f}, "
+              f"delta={layer_result['cka_delta_pct']:+.1f}%), var_ret={var_retained:.4f}, "
+              f"acc={final_acc:.4f}")
+
+    # Summary table
+    print(f"\n  {'='*80}")
+    print(f"  PCA FORMAT-REMOVAL (min-k) SUMMARY: {model}")
+    print(f"  {'='*80}")
+    print(f"  {'Layer':<7} {'k':>5} {'k%':>7} | {'OrigCKA':>9} {'PCA_CKA':>9} {'Delta%':>8} | "
+          f"{'VarRet':>8} {'Acc':>8}")
+    print(f"  {'-'*72}")
+    for layer, r in all_layer_results.items():
+        print(f"  L{layer:<5} {r['k_min']:>5} {r['k_ratio']*100:>6.2f}% | "
+              f"{r['original_cka']:>9.4f} {r['pca_cka']:>9.4f} {r['cka_delta_pct']:>+7.1f}% | "
+              f"{r['variance_retained']:>8.4f} {r['final_accuracy']:>8.4f}")
+
+    return all_layer_results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Verify/Iterative Residualized CKA")
     parser.add_argument("--models", nargs="+", required=True)
@@ -731,7 +863,7 @@ def main():
                         default="/root/autodl-tmp/cache/hidden_states")
     parser.add_argument("--out-dir", type=str, default=None)
     parser.add_argument("--mode", choices=["verify", "iterative", "random-baseline",
-                                          "pca-baseline"], default="verify")
+                                          "pca-baseline", "pca-mink"], default="verify")
     parser.add_argument("--n-perm", type=int, default=5000)
     parser.add_argument("--n-bootstrap", type=int, default=1000)
     parser.add_argument("--n-triples", type=int, default=None)
@@ -786,6 +918,11 @@ def main():
             run_pca_baseline(model, data, layers, n_triples, out_dir,
                              hidden_dim=hidden_dim,
                              iterative_ref_dir=ref_dir)
+        elif args.mode == "pca-mink":
+            run_pca_mink(model, data, layers, n_triples, out_dir,
+                         hidden_dim=hidden_dim,
+                         n_perm=args.n_perm, n_bootstrap=args.n_bootstrap,
+                         acc_threshold=args.acc_threshold)
 
         del data
         gc.collect()
