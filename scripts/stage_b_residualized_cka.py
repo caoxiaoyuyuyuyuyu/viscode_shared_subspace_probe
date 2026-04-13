@@ -33,6 +33,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
+
+np.seterr(over='raise', invalid='raise')
 from sklearn.linear_model import LogisticRegression
 
 sys.stdout.reconfigure(line_buffering=True)
@@ -92,9 +94,11 @@ def _center_gram(K):
 
 
 def _cka_from_centered(KX_c, KY_c):
-    hsic_xy = np.sum(KX_c * KY_c)
-    hsic_xx = np.sum(KX_c * KX_c)
-    hsic_yy = np.sum(KY_c * KY_c)
+    KX64 = KX_c.astype(np.float64, copy=False)
+    KY64 = KY_c.astype(np.float64, copy=False)
+    hsic_xy = np.float64(np.sum(KX64 * KY64))
+    hsic_xx = np.float64(np.sum(KX64 * KX64))
+    hsic_yy = np.float64(np.sum(KY64 * KY64))
     denom = np.sqrt(hsic_xx * hsic_yy)
     if denom < 1e-12:
         return 0.0
