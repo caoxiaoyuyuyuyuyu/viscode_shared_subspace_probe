@@ -43,6 +43,8 @@ import time
 from pathlib import Path
 
 import numpy as np
+
+np.seterr(over='raise', invalid='raise')
 import torch
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
@@ -127,9 +129,9 @@ def _center_gram(K):
 
 
 def _cka_from_centered(KX_c, KY_c):
-    hsic_xy = np.sum(KX_c * KY_c)
-    hsic_xx = np.sum(KX_c * KX_c)
-    hsic_yy = np.sum(KY_c * KY_c)
+    hsic_xy = np.float64(np.sum(KX_c.astype(np.float64) * KY_c.astype(np.float64)))
+    hsic_xx = np.float64(np.sum(KX_c.astype(np.float64) ** 2))
+    hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
     denom = np.sqrt(hsic_xx * hsic_yy)
     return float(hsic_xy / denom) if denom > 1e-12 else 0.0
 
@@ -169,9 +171,9 @@ def run_bootstrap_ci(fmt_data, n_triples, n_bootstrap, frac=0.8):
             KY = grams[f2][np.ix_(idx, idx)]
             KX_c = H @ KX @ H
             KY_c = H @ KY @ H
-            hsic_xy = np.sum(KX_c * KY_c)
-            hsic_xx = np.sum(KX_c * KX_c)
-            hsic_yy = np.sum(KY_c * KY_c)
+            hsic_xy = np.float64(np.sum(KX_c.astype(np.float64) * KY_c.astype(np.float64)))
+            hsic_xx = np.float64(np.sum(KX_c.astype(np.float64) ** 2))
+            hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
             denom = np.sqrt(hsic_xx * hsic_yy)
             pair_ckas.append(hsic_xy / denom if denom > 1e-12 else 0.0)
         boot_means[b] = np.mean(pair_ckas)
@@ -192,7 +194,7 @@ def run_a2_perm(fmt_data, n_triples, n_perm):
 
     grams = {fmt: fmt_data[fmt] @ fmt_data[fmt].T for fmt in FORMATS}
     centered = {fmt: H_center @ grams[fmt] @ H_center for fmt in FORMATS}
-    hsic_xx = {fmt: float(np.sum(centered[fmt] ** 2)) for fmt in FORMATS}
+    hsic_xx = {fmt: float(np.sum(centered[fmt].astype(np.float64) ** 2)) for fmt in FORMATS}
 
     obs_vals = []
     for f1, f2 in FORMAT_PAIRS:
@@ -206,8 +208,8 @@ def run_a2_perm(fmt_data, n_triples, n_perm):
         for f1, f2 in FORMAT_PAIRS:
             KY_perm = grams[f2][np.ix_(perm, perm)]
             KY_c = H_center @ KY_perm @ H_center
-            hsic_xy = np.sum(centered[f1] * KY_c)
-            hsic_yy = np.sum(KY_c * KY_c)
+            hsic_xy = np.float64(np.sum(centered[f1].astype(np.float64) * KY_c.astype(np.float64)))
+            hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
             denom = np.sqrt(hsic_xx[f1] * hsic_yy)
             null_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
         null_means[p_idx] = np.mean(null_vals)
@@ -424,8 +426,8 @@ def run_iterative(model, data, layers, n_triples, out_dir, n_perm, n_bootstrap,
                 for f1, f2 in FORMAT_PAIRS:
                     KY_perm = all_grams[li][f2][np.ix_(perm, perm)]
                     KY_c = H_center @ KY_perm @ H_center
-                    hsic_xy = np.sum(all_centered[li][f1] * KY_c)
-                    hsic_yy = np.sum(KY_c * KY_c)
+                    hsic_xy = np.float64(np.sum(all_centered[li][f1].astype(np.float64) * KY_c.astype(np.float64)))
+                    hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
                     denom = np.sqrt(all_hsic_xx[li][f1] * hsic_yy)
                     null_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
             null_means[p_idx] = np.mean(null_vals)

@@ -9,6 +9,8 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 import numpy as np
+
+np.seterr(over='raise', invalid='raise')
 import torch
 
 # ── paths ──
@@ -32,9 +34,9 @@ def linear_cka(X: np.ndarray, Y: np.ndarray) -> float:
     H = np.eye(n) - 1.0 / n
     KX = H @ (X @ X.T) @ H
     KY = H @ (Y @ Y.T) @ H
-    hsic_xy = np.sum(KX * KY)
-    hsic_xx = np.sum(KX * KX)
-    hsic_yy = np.sum(KY * KY)
+    hsic_xy = np.float64(np.sum(KX.astype(np.float64) * KY.astype(np.float64)))
+    hsic_xx = np.float64(np.sum(KX.astype(np.float64) ** 2))
+    hsic_yy = np.float64(np.sum(KY.astype(np.float64) ** 2))
     return float(hsic_xy / np.sqrt(hsic_xx * hsic_yy))
 
 

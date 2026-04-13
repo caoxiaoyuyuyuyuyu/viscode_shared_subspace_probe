@@ -30,6 +30,8 @@ import time
 from pathlib import Path
 
 import numpy as np
+
+np.seterr(over='raise', invalid='raise')
 import psutil
 import torch
 from scipy import stats
@@ -180,9 +182,9 @@ def _center_gram_f32(K):
 
 def _cka_from_centered(KX_c, KY_c):
     """CKA from pre-centered Gram matrices using trace trick."""
-    hsic_xy = np.sum(KX_c * KY_c)
-    hsic_xx = np.sum(KX_c * KX_c)
-    hsic_yy = np.sum(KY_c * KY_c)
+    hsic_xy = np.float64(np.sum(KX_c.astype(np.float64) * KY_c.astype(np.float64)))
+    hsic_xx = np.float64(np.sum(KX_c.astype(np.float64) ** 2))
+    hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
     denom = np.sqrt(hsic_xx * hsic_yy)
     if denom < 1e-12:
         return 0.0
@@ -258,9 +260,9 @@ def run_bootstrap_ci(raw_grams, n_triples, n_bootstrap, frac=0.8):
                     KY = raw_grams[model][f2][li][np.ix_(idx, idx)]
                     KX_c = H @ KX @ H
                     KY_c = H @ KY @ H
-                    hsic_xy = np.sum(KX_c * KY_c)
-                    hsic_xx = np.sum(KX_c * KX_c)
-                    hsic_yy = np.sum(KY_c * KY_c)
+                    hsic_xy = np.float64(np.sum(KX_c.astype(np.float64) * KY_c.astype(np.float64)))
+                    hsic_xx = np.float64(np.sum(KX_c.astype(np.float64) ** 2))
+                    hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
                     denom = np.sqrt(hsic_xx * hsic_yy)
                     pair_ckas.append(hsic_xy / denom if denom > 1e-12 else 0.0)
                     del KX, KY, KX_c, KY_c
@@ -347,9 +349,9 @@ def run_a1_power_sim(raw_grams, n_triples, n_power_iter):
                     KY = raw_grams[model][f2][rep_layer_idx][np.ix_(idx, idx)]
                     KX_c = Hb @ KX @ Hb
                     KY_c = Hb @ KY @ Hb
-                    hsic_xy = np.sum(KX_c * KY_c)
-                    hsic_xx = np.sum(KX_c * KX_c)
-                    hsic_yy = np.sum(KY_c * KY_c)
+                    hsic_xy = np.float64(np.sum(KX_c.astype(np.float64) * KY_c.astype(np.float64)))
+                    hsic_xx = np.float64(np.sum(KX_c.astype(np.float64) ** 2))
+                    hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
                     denom = np.sqrt(hsic_xx * hsic_yy)
                     obs_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
                     del KX, KY, KX_c, KY_c
@@ -404,7 +406,7 @@ def run_a2_permutation(raw_grams, n_triples, n_perm):
         hsic_xx_cache = {}
         for fmt in FORMATS:
             for li in range(len(LAYERS)):
-                hsic_xx_cache[(fmt, li)] = float(np.sum(centered[fmt][li] ** 2))
+                hsic_xx_cache[(fmt, li)] = float(np.sum(centered[fmt][li].astype(np.float64) ** 2))
 
         # Observed CKA
         obs_vals = []
@@ -423,8 +425,8 @@ def run_a2_permutation(raw_grams, n_triples, n_perm):
                     KX_c = centered[f1][li]
                     KY_perm = raw_grams[model][f2][li][np.ix_(perm, perm)]
                     KY_c = H @ KY_perm @ H
-                    hsic_xy = np.sum(KX_c * KY_c)
-                    hsic_yy = np.sum(KY_c * KY_c)
+                    hsic_xy = np.float64(np.sum(KX_c.astype(np.float64) * KY_c.astype(np.float64)))
+                    hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
                     denom = np.sqrt(hsic_xx_cache[(f1, li)] * hsic_yy)
                     null_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
                     del KY_perm, KY_c

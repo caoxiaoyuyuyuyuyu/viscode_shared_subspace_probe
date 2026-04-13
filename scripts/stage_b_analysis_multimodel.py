@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 
 import numpy as np
+
+np.seterr(over='raise', invalid='raise')
 import torch
 
 sys.stdout.reconfigure(line_buffering=True)
@@ -96,9 +98,9 @@ def _center_gram(K):
 
 
 def _cka_from_centered(KX_c, KY_c):
-    hsic_xy = np.sum(KX_c * KY_c)
-    hsic_xx = np.sum(KX_c * KX_c)
-    hsic_yy = np.sum(KY_c * KY_c)
+    hsic_xy = np.float64(np.sum(KX_c.astype(np.float64) * KY_c.astype(np.float64)))
+    hsic_xx = np.float64(np.sum(KX_c.astype(np.float64) ** 2))
+    hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
     denom = np.sqrt(hsic_xx * hsic_yy)
     if denom < 1e-12:
         return 0.0
@@ -146,9 +148,9 @@ def run_bootstrap_ci(raw_grams, layers, n_triples, n_bootstrap, frac=0.8):
                 KY = raw_grams[f2][li][np.ix_(idx, idx)]
                 KX_c = H @ KX @ H
                 KY_c = H @ KY @ H
-                hsic_xy = np.sum(KX_c * KY_c)
-                hsic_xx = np.sum(KX_c * KX_c)
-                hsic_yy = np.sum(KY_c * KY_c)
+                hsic_xy = np.float64(np.sum(KX_c.astype(np.float64) * KY_c.astype(np.float64)))
+                hsic_xx = np.float64(np.sum(KX_c.astype(np.float64) ** 2))
+                hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
                 denom = np.sqrt(hsic_xx * hsic_yy)
                 pair_ckas.append(hsic_xy / denom if denom > 1e-12 else 0.0)
             boot_means[b] = np.mean(pair_ckas)
@@ -178,7 +180,7 @@ def run_a2_permutation(raw_grams, layers, n_triples, n_perm):
         centered[fmt] = {}
         for li in range(len(layers)):
             centered[fmt][li] = H @ raw_grams[fmt][li] @ H
-            hsic_xx_cache[(fmt, li)] = float(np.sum(centered[fmt][li] ** 2))
+            hsic_xx_cache[(fmt, li)] = float(np.sum(centered[fmt][li].astype(np.float64) ** 2))
 
     # Observed CKA
     obs_vals = []
@@ -203,8 +205,8 @@ def run_a2_permutation(raw_grams, layers, n_triples, n_perm):
                 KX_c = centered[f1][li]
                 KY_perm = raw_grams[f2][li][np.ix_(perm, perm)]
                 KY_c = H @ KY_perm @ H
-                hsic_xy = np.sum(KX_c * KY_c)
-                hsic_yy = np.sum(KY_c * KY_c)
+                hsic_xy = np.float64(np.sum(KX_c.astype(np.float64) * KY_c.astype(np.float64)))
+                hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
                 denom = np.sqrt(hsic_xx_cache[(f1, li)] * hsic_yy)
                 null_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
         null_means[p_idx] = np.mean(null_vals)

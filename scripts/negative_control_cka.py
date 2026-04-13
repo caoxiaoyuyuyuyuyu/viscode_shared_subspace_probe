@@ -2,6 +2,8 @@
 """Negative Control CKA Analysis: Compare Python-X vs Visual cross-format CKA."""
 import json
 import numpy as np
+
+np.seterr(over='raise', invalid='raise')
 import torch
 import time
 from pathlib import Path
@@ -35,9 +37,9 @@ def cka(X, Y):
     KY = Y @ Y.T
     KX_c = center_gram(KX)
     KY_c = center_gram(KY)
-    hsic_xy = np.sum(KX_c * KY_c)
-    hsic_xx = np.sum(KX_c * KX_c)
-    hsic_yy = np.sum(KY_c * KY_c)
+    hsic_xy = np.float64(np.sum(KX_c.astype(np.float64) * KY_c.astype(np.float64)))
+    hsic_xx = np.float64(np.sum(KX_c.astype(np.float64) ** 2))
+    hsic_yy = np.float64(np.sum(KY_c.astype(np.float64) ** 2))
     denom = np.sqrt(hsic_xx * hsic_yy)
     return float(hsic_xy / denom) if denom > 1e-12 else 0.0
 
