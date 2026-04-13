@@ -26,20 +26,33 @@ def atomic_write_json(path: Path, obj):
 
 
 def append_ckpt_line(line: str):
-    """Append a line to CKPT_FILE with fsync."""
+    """Append a line to CKPT_FILE with fsync. Writes version=2 header on first use."""
     CKPT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    need_header = not CKPT_FILE.exists() or CKPT_FILE.stat().st_size == 0
     with open(CKPT_FILE, "a") as f:
+        if need_header:
+            f.write(CKPT_VERSION_HEADER + f" t={time.time()}\n")
         f.write(line + "\n")
         f.flush()
         os.fsync(f.fileno())
 
 
+CKPT_VERSION_HEADER = "# version=2 format=pair_type model Llayer t=ts"
+
+
 def load_done_set():
-    """Parse CKPT_FILE → set of (pair_type, model, layer) triples already done."""
+    """Parse CKPT_FILE → set of (pair_type, model, layer) triples already done.
+
+    Requires first line to be `# version=2 ...` header; otherwise file is
+    treated as stale and ignored (returns empty set)."""
     done = set()
     if not CKPT_FILE.exists():
         return done
-    for raw in CKPT_FILE.read_text().splitlines():
+    lines = CKPT_FILE.read_text().splitlines()
+    if not lines or not lines[0].startswith("# version=2"):
+        print(f"[CKPT] WARNING: {CKPT_FILE} missing version=2 header, treating as stale, ignoring", flush=True)
+        return done
+    for raw in lines[1:]:
         raw = raw.strip()
         if not raw or raw.startswith("#"):
             continue
@@ -152,6 +165,7 @@ def main():
             done_set = set()
     else:
         results = {"python_x": [], "visual_x": [], "summary": {}}
+        done_set = set()
 
     # Compute CKA for all pairs at all layers
     for pair_type, pairs, result_key in [

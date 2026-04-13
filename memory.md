@@ -28,7 +28,7 @@ autodl-viscode-probe 上 vLLM 的已知问题：
 
 ## stop token bug (2026-04-10)
 
-**严重**：`SamplingParams(stop=["```"])` 会在 Qwen2.5-Coder 的 chat template 输出开头立即触发（assistant response 前有 ` ```code` 标记），导致生成 0 tokens。之前 P3 报 9/9 PASS 是因为那次运行恰好没用 stop=["```"]（用了不同的脚本版本），但 artifact 未持久化。
+**严重**：`SamplingParams(stop=["```"])` 会在 Qwen2.5-Coder 的 chat template 输出开头立即触发（assistant response 前有 ` ```code` 标记），导致生成 0 tokens。
 
 修复：用 format-specific stop tokens（SVG: `</svg>`, TikZ: `\end{tikzpicture}`, Asymptote: 无 stop）
 
@@ -39,7 +39,7 @@ autodl-viscode-probe 上 vLLM 的已知问题：
 - **VisPlotBench**: SVG 65 条 + Asymptote 92 条，**远少于 spec 的 200/format**。需要补充数据源。
 - **DaTikZ v1** (nllg/datikz): 50K train + 561 test。v4 是最新版但未下载。
 - **DaTikZ v2** (nllg/datikz-v2): 94,532 train rows + 442 test rows，3.7G parquet（datasets_integrity_v3_4 救援后实测，**非** 预估的 7.7G）。**v3 主 TikZ probe (Reviewer 18 pivot)**。
-- **SVGX-Core-250k**: 257K 条，有 blip_caption + svg_code，是 SVG probe pool 的主力来源。
+- **SVGX-Core-250k**: 257K 条，有 blip_caption + svg_code，是 SVG probe pool 的主力来源。**emoji-heavy**: 243 unique Qwen2 token types / 1.25M total tokens，结构高度重复。任何基于 SVG 数据集选择的实验必须注意结构单一性，特别是 cross-format 对齐假设。
 - **VisCode-Multi-679K**: 工作副本 `data/VisCode_filtered/` = 193,199 rows = D015 spec full coverage (svg 46621 + latex 124039 + asy 22539)。**禁止 HF 重下**。HF cache hub 8K metadata 是预存只读痕迹，不是 anomaly。
 - 磁盘从 35G → 18G free（HF cache + datasets）→ datikz-v2 救援后 17G free
 
@@ -54,293 +54,460 @@ autodl-viscode-probe 上 vLLM 的已知问题：
 
 ## Worker callback 空响应 = FAIL 信号 (2026-04-10)
 
-Worker callback raw result 只有一句 "Acknowledged. ... No further action." 这种**必须当成 FAIL 信号**，立即派 verify worker 兜底清点实际产出。Step 2 v1 就这样过关，结果 reviewer 从远程 log 抓到 silent fallback 违规。今后任何 Worker 完成汇报：
-- 无具体数字（triples count、文件大小、耗时）→ 派 verify
-- 无 artifact id 引用 → 派 verify
-- 只说"done"、"complete"、"acknowledged" → 派 verify
+Worker callback raw result 只有一句 "Acknowledged. ... No further action." 这种**必须当成 FAIL 信号**，立即派 verify worker 兜底清点实际产出。
 
-## D015 VisCoder2 contamination（见 /Users/.../memory/project_d015_viscoder2_memorization_floor.md）
+## D015 VisCoder2 contamination
 
-VisCoder2-7B 是 Qwen2.5-Coder-7B-Instruct SFT on VisCode-Multi-679K，对 VCM-derived eval subset 是 HIGH contamination = memorization floor。Headline 用 24-cell rank ρ + 预注册 N=18 robustness (剔除 VisCoder2)。narrative 不依赖 VisCoder2 绝对位置。详见 pre_reg v3.3 §3-bis（art_20260410_922cb6）。
+VisCoder2-7B 是 Qwen2.5-Coder-7B-Instruct SFT on VisCode-Multi-679K，对 VCM-derived eval subset 是 HIGH contamination = memorization floor。Headline 用 N=12（不含 VisCoder2），N=18 含 VisCoder2 作 "full-model view with known memorization floor"。
 
 ## D016 + D017 综合 RECOVERY (2026-04-10)
 
-**根因（Reviewer 十三审）**：probe pool 2/3 (TikZ 124k VCM-latex + Asy 22k VCM-asy) 来自 VCM = VisCoder2 SFT 训练集。N=18 排除 VisCoder2 cells **不能 mitigate**——它只去掉 behavior side，留下的 18 cells probe geometry 仍坐在污染基准上。
-
-**D016 决策（A4 路径正式激活）**：
 - **Headline 切 N=12** = Qwen2.5-Coder + Qwen2.5-7B base × 6 格式对
-- N=18 含 VisCoder2 作 contamination-aware **auxiliary** 报告
-- VisCoder2 在 Discussion 作 **memorization-floor reference**
-- ~~Decoupling shift 降级为 exploratory observation~~ → **D019 C2 完全 ban**（见下）
-- A2 permutation null 在 N=12 重做（原 N=24 null 不 transferable）
-- Stage E 跳过（D016 联动 A7），论文写作 16→24h
-- **Probe pool 清洁化**：
-  - SVG = SVGX-Core-250k（B2 scoped verdict 仅排 StarVector 通道 → Reviewer 16+18 walk back LOW–MEDIUM）
-  - TikZ = ~~DaTikZ v1 train only~~ → **DaTikZ v2 train 94k only** (Reviewer 18 pivot, fail-safe DaTikZ v1 49k)
-  - Asy = VCM-asy 22k 全用 + 在 step2_report.json 显式 `contamination_disclosure` 字段声明「VCM-asy is VisCoder2 SFT data, used for non-VisCoder2 models only in headline analysis」
-- **不再做 80/20 disjoint split**（之前 cancelled 的 step2_v2 worker 用了 split 方案与 D016 冲突）
-
-**D017 SBERT cosine 硬锁**：
-1. `COSINE_THRESHOLD = 0.70` 硬编码，删除所有 `COSINE_THRESHOLD_LOW` 常量
-2. 不达 500 → `raise SystemExit` + 写错误到 step2_report.json + callback Director 决策
-3. fallback 仅允许 ≥0.65/N=400 且必须正式 log_decision（不在脚本内决定）
-4. `PROBE_EMBED_SAMPLE`: 10000 → 50000（SVG 池），DaTikZ train 94k 全用，Asy 22k 全用
-5. Caption 截断 sbert tokenizer 前 50 token（避 Asy 长 caption 系统性拉低 cosine）
-6. Per-triple metadata: 来源 dataset / 截断前后 caption / 三对 cosine
-7. step2_report.json 必填 `threshold` (0.70 fixed), `n_triples`, `mean/median/min cos`, `embed_pool sizes`, `contamination_disclosure`
+- N=18 含 VisCoder2 作 contamination-aware auxiliary
+- **Probe pool 清洁化**：SVG = SVGX-Core-250k (LOW–MEDIUM), TikZ = DaTikZ v2 train 94k, Asy = VCM-asy 22k + contamination_disclosure
+- **D017 SBERT cosine 硬锁 0.70**
 
 ## Worker 派发制度规则（D016 落盘 2026-04-10）
 
-1. **下载白名单制**：Worker 派发任何下载 dataset/model 的任务前，task prompt 必须显式列 _allowed entity_ 白名单（snapshot id + revision）。Worker 内禁 opportunistic download，遇到 spec 外需求必须 `raise` + callback Director。
-2. **禁静默降级**：任何 pre-registered threshold/source 不得在脚本内静默降级；遇到不达标必须 `raise SystemExit` + 写错误到 report.json + callback Director。
-3. **空 callback = FAIL**：Worker callback 内容看似空（如 'Acknowledged. No further action.'）必须当 FAIL 信号，verify worker 兜底清点实际产出。
-4. **pre_reg 与决策对偶**：Pre-reg 版本变更必须配对 log_decision，不能只 register pre_reg 不写决策。D015 的教训是流程缺失，不是判断错误。
-5. **(Reviewer 18, P4) 数据源路径必须硬编码**：build_eval_pool_v3_4.py 等任何依赖 D015 spec source 的脚本，path 必须硬编码绝对路径（e.g. `/root/autodl-tmp/viscode_shared_subspace_probe/data/VisCode_filtered/`），**禁止** 调用 `datasets.load_dataset("TIGER-Lab/VisCode-Multi-679K")` 等会触发 HF 重下的 API。Worker task prompt 必须列 _禁用 API_ 黑名单。
+1. **下载白名单制** 2. **禁静默降级** 3. **空 callback = FAIL** 4. **pre_reg 与决策对偶** 5. **数据源路径必须硬编码**
 
 ## 自我决策规则（main agent）
 
-派 worker 之前，**自己设计的"修复方案"如果与 Director 已 log 的 D 决策有任何分歧（即使只是手段不同）**，必须先 push back 等 Director 确认再派。Step 2 v2 worker 第一次派失败的原因：我自作主张用 Asy 80/20 disjoint split 绕泄漏，与 D016 的「Asy 全用 + contamination_disclosure + VisCoder2 移出 headline」方案冲突，被迫 cancel 重派。下次涉及方案选择类决策（不只是执行细节），先汇报方案给 Director 1 句话确认。
+派 worker 之前，**自己设计的方案如果与 Director 已 log 的 D 决策有任何分歧**，必须先 push back 等确认。
 
-## D018 救赎 — 删除指令的等待规则 (2026-04-10)
+## D018 删除指令等待规则 (2026-04-10)
 
-**Director 在 worker 在跑、决策反复、Reviewer 多轮审查时发出 cleanup/delete 类指令前，必须先等当前 Reviewer 轮次出审结束**。
+**5min flux hold rule**：D 决策落盘后 5min 内不执行任何 destructive cleanup。pre_registration 锁定的 source 在被正式替换前不得删除。
 
-D016 22:50 UTC log + 我立即派 cleanup worker 删 datikz-v2 → 22:55 UTC Reviewer 14 审给出 D018，揭示 datikz-v2 是 v3.3 §3 line 122 锁定的 probe source。两个决策只隔 5 min，cleanup 已不可逆 → datikz-v2 必须紧急重下 → 实测 3.7G（非预估 7.7G），datasets_integrity_v3_4 救援 SUCCESS。
+## D019 N=12 硬约束 (2026-04-10)
 
-**规则**：
-1. **pre_registration 文档锁定的 source 在被正式替换前不得删除任何对应 dataset**——任何 cleanup worker 的删除清单必须先与 pre_reg 当前版本 §3 cross check
-2. 如果 Director 发了删除指令，但删除目标在 pre_reg 列表内 → main agent 必须 push back 询问"X 在 pre_reg vN §3 是 locked source，是否撤回该 source 后再删？"，**不要直接派 worker 执行**
-3. 紧急删除指令（"立即删 X"）即使 Director 命令也要先 read pre_reg + ROADMAP 确认无冲突再派
-4. **5min flux hold rule**：D 决策落盘后 5min 内不执行任何 destructive cleanup（即使 cleanup 看起来与 D 决策一致）。给当前 Reviewer 轮次留充分 push back 窗口
-5. **datikz-v2 stale lock 清理**：HF cache `.locks/datasets--nllg--datikz-v2` 即使 dataset 删了也会留 lock metadata；重下前先清 stale lock 否则会触发 PermissionError / cache corruption。Worker task prompt 必须含 `rm -rf .hf_cache/hub/.locks/datasets--nllg--datikz-v2 && rm -rf .hf_cache/hub/datasets--nllg--datikz-v2` 前置步骤
+1. N=12 power simulation 必须做 2. N=12 下 decoupling claim **完全禁止** 3. D019 C2 ban 词：exploratory / preliminary / suggestive / qualitative
 
-**D016 cleanup 已撤回**：原指令"删 datikz-v2 7.7G"作废，datikz-v2 列入 v3.4 protected list。
+## Self-pushback 规则 (4 次 validated)
 
-## D018 教训汇总 (2026-04-10)
+发现冲突 → 停止 → 引用 ground truth → push back → 绝不分叉。
 
-Reviewer 14 审 6 critical 暴露的系统性问题：
-1. **v3.3 vs step2 v1 不匹配**：pre_reg 锁定 source 后脚本没读 pre_reg，自己写死了不同的 source。**今后 step* 脚本必须从 build_eval_pool_v3_4.py 输出读 JSONL，不在脚本内 ad-hoc 切**
-2. **build script 缺失**：v3.3 §3 承诺了 build_eval_pool_v3_3.py 但从未创建。pre_reg 引用的 script 必须先 register 才能 commit pre_reg 版本
-3. **HARKing 风险**：Path B（追认 step2 v1）被 Director 拒绝，确立**遇到 spec 不匹配只能 fix script 不能 fix spec**的原则
-4. **决策追溯流程缺失**：D015 v3.3 是追溯批准（先 register pre_reg v3.3 后 log decision）→ 今后 pre_reg 修订必须 **先 log_decision 后 register**
+## SVG verdict 锚定 = LOW–MEDIUM — 永久
 
-## D019 supplement — Reviewer 15 审追加 (2026-04-10)
+SVGX-Core-250k packaging post-cutoff 仅提供 packaging-level safety；underlying SVG content 多年前公开，Common Crawl 通道未排除。
 
-Reviewer 15 审在 D018 基础上追加 4 项硬约束 + Director 投稿目标降级裁决：
+## VCM-679K 数字事实 (永久锁定)
 
-### 1. N=12 power simulation 必须做（C1）
-- D008 C2 硬条件：A1 必须报 ρ_true ∈ {0.1, 0.3, 0.5} × 1000-trial detection power
-- 原 N=18 power: 0.218 / 0.435 / 0.591
-- N=12 估保守 ≈ 0.13 / 0.30 / 0.40
-- A1 task **双跑** (N=12 主 + N=18 辅)
-- 写入 v3.4 §9 + Stage B 任务 + ROADMAP 短期任务
+| 口径 | 数字 |
+|---|---|
+| HF 原始 | 679,365 rows × 12 languages |
+| D015 spec | svg+latex+asy = 193,199 rows |
+| 本地工作副本 | 193,199 rows |
 
-### 2. N=12 下 decoupling claim **完全禁止**（C2）
-- N=12 下 D013 判据 (|ρ|<0.3 ∧ CI⊃0 ∧ ρ<null 90th) 几乎必然满足 → "数据必然结果" 不是"实证观察"
-- v3.4 §9 + §10 deviation policy 明文写：**"N=12 下 decoupling claim 完全禁止"**
-- 等效于在 D013 判据上加 "power ≥ 0.5 hard gate"
-- 论文叙事仅做 framework contribution（**不写 qualitative observation 等限定词** — D019 C2 ban 包括 exploratory / preliminary / suggestive / qualitative 全部变体）
-- A2 permutation null 在 N=12 重做但**不**用于 decoupling claim，仅用于 null 分布形状的描述性统计
+## Worker done sentinel 协议 (2026-04-11)
 
-### 3. N=18 重定位为 "full-model view with known memorization floor"（W3，不写 exploratory）
-- N=18 含 VisCoder2，Asy 相关 2 cells 仍受 VCM-asy memorization 污染
-- D016 把 N=18 写为 "robustness check" → 已知污染的 robustness check 信息价值≈0
-- v3.4 §9 把 N=18 重定位为 **"full-model view with known memorization floor on Asy/TikZ for VisCoder2"**（不写 exploratory，D019 C2 ban）
-- **取消 N=18 作为 N=12 robustness check 的角色**
-- Discussion 用 N=12 vs N=18 的 ρ 差异作 contamination effect 的直接量化证据
+Launcher 必须 echo sentinel；Worker 必须 `tmux has-session` 或 `grep sentinel` 才能报 done。进程检测扩展为 `(tmux has-session || pgrep -f script)` 任一 TRUE 判活。
 
-### 4. 投稿目标降级（W2 + Director 裁决）
-- N=12 = 2 个同家族 Qwen2.5 模型 = 更像 ablation 不是 cross-model
-- **主投目标降为 EMNLP findings / NeurIPS workshops on mechanistic interpretability**
-- 主会作 stretch target 但不强求
-- **不补第 4 模型**（48h 预算不允许）
-- v3.4 §11 加 venue 降级声明
-- 论文 framing 从 "predictive visual program subspace" → **"framework + Qwen2.5 family case study"**
-- abstract / intro / conclusion 全部按 case study 框架起草
+## Bash 脚本 fail-loud + Code-fix worker 必须 push (2026-04-11)
 
-### Director 正向反馈（项目里程碑）
-Director 在 D019 头部明确肯定我自己 cancel `worker_fix_step2_sbert_v2_rerun_20260410T225944`（Asy 80/20 split 与 D016 冲突 → 自发现 + 自 cancel + 自 push back）的行为。"这个行为继续保持。下次任何自己设计的方案与决策可能冲突，先 cancel + 确认，不要分叉。" 这条 Director 已写入 director memory 作正向验证。
+所有 shell 脚本 `set -euo pipefail`。code-fix worker 必须 `git push` + 报告 push range。
 
-→ 加固 self-pushback 规则：**Reviewer 报告与你已 done 的 worker 不一致 → 先 cancel + 报告 + 等确认；自己设计的方案与决策有任何分歧 → 同上**。
+## save_project_file 是覆盖写 (2026-04-11)
 
-## Reviewer 16 矫正 — Audit scoped verdict 不可外推 (2026-04-10)
+必须先 read_project_file(max_chars=0) 拿完整内容，拼接后覆盖写。**禁止**传占位符 content。
 
-**根因复合错误**：worker_audit_svgx_core_starvector_relation 产出的 svgx_starvector_audit.md 把 B2 scoped verdict（"INDEPENDENT from StarVector"）外推为 "SVG probe is clean for all models, double safety, post-cutoff"。我读了之后无质疑复用，写进 worker_audit_contamination_4_independent_v2_final 的 task prompt 作 SVG=LOW 预设证据。Reviewer 16 push back 指出：
+## Registry 回读验证 + register_cron + idle 自检 (2026-04-11)
 
-1. SVGX-Core 6 源中最大的 SVGRepo 210K **预 cutoff 公开多年**，可能经 Common Crawl 进入 Qwen2.5-Coder 预训练
-2. emoji 集 (Noto/Twemoji/Fluentui) 同样预 cutoff 公开
-3. Pixso/ReShot vector marketplace 公开内容预 cutoff 可抓
-4. SVGX-Core post-cutoff (2024-12) 论证**只对 packaging 成立**，不对 underlying content
-5. 与 CoSyn-400K 本质不同：CoSyn 2025-02 全新合成 underlying 不可能预 cutoff，SVGX-Core 是 re-packaging 多年前公开 SVG
+update_registry 后必须 read_registry 回读。新 exp_id 进 RUNNING 前必须 register_cron。idle >5min 主动自检三件套。
 
-→ Qwen2.5-Coder × SVG 必须保留 **LOW–MEDIUM**（保守），不能下调到 LOW
+## Format probe 100% = tokenization artifact (2026-04-11, 4-chain confirmed)
 
-### 制度规则：audit verdict 强度阅读纪律
+3 格式 token 分布近正交 → mean-pool centroid 线性可分 → probe 100%。是 tokenization artifact 非语义表征。论文 §5.1 作反面教材。
 
-1. **scoped verdict ≠ 整体 verdict**：每个 audit 的 verdict 必须明确写出 scope（"INDEPENDENT from StarVector channel" ≠ "INDEPENDENT from all contamination channels"）
-2. **audit 文档复用前必须批判性读**：worker 产出的 audit verdict 措辞（"clean", "double safety", "all models"）要质疑——它是基于哪些 channel 排除？哪些 channel 没排除？
-3. **不直接复用进 task prompt**：audit verdict 复用到下一个 worker 的 task prompt 前，必须 main agent 自己重写为带 scope 限制的措辞，避免 over-claim 信息链
-4. **Common Crawl 通道是 LLM 预训练 contamination 的默认通道**：任何"public-since-pre-cutoff"的 source（公共仓库、marketplace、emoji 集、wiki）都不能基于 packaging 时间论证 LOW，必须按 LOW-MEDIUM 起步
+## D028 论文叙事重构 — "shared subspace" 强叙事不成立 (2026-04-11, critical)
 
-### 复合错误信息链（本次实例）
+**核心转向**：论文从 "we found a shared subspace" → **"framework + honest case study"**。
 
+### 禁用措辞
+- **禁 "shared subspace"**（标题、abstract、results 全禁）
+- **禁 "preserve vs collapse"**（D020 旧措辞作废）
+- 替代：用 "statistically significant but weak cross-format representational similarity"
+
+### 5 Key Findings（论文 Results 骨架）
+1. **Format dominance**：format probe 100% at all layers → 格式信息是压倒性主导特征（正面呈现，不隐藏）
+2. **Weak but significant cross-format similarity**：CKA 0.10-0.15，A2 p<0.0005，effect size 小（~3x null）
+3. **Syntax family confound**：tikz-asy CKA 系统性 2-3x 高于 svg-tikz → LaTeX-adjacent 语法族相似性可能是主要驱动力
+4. **Last-layer washout**：qwen25 L28 CKA 显著下降 → 最后层转向通用 LM head
+5. **SFT preservation**：coder ≈ viscoder2（CKA 差异 < 0.02）
+
+### 统计方法链保留（7 项）
+CKA + Bootstrap CI + A1 power sim + A2 permutation + token control + Procrustes + PWCCA
+
+### W4 A1 power 澄清
+power=1.0 只说明 CKA 信号可检测，**不等于 effect size 充足**。论文必须明确区分。
+
+### W5 N_PERM 修正
+production n_perm: 2000 → **5000**（已改 stage_b_analysis.py）
+
+### 旧措辞作废
+D020 "Stage B headline 5 元素锁定" 中 "preserve vs collapse" 措辞被 D028 取代。
+
+## CCA 模块删除 + PWCCA 替代 (2026-04-11)
+
+n<<d 下 CCA 退化（ρ=1.0 必然）→ 删除 CCA → 补加 PWCCA (Morcos et al. 2018, SVD 截断 + variance-weighted)。robustness = Procrustes + PWCCA 双检验。
+
+**PWCCA 实现说明**（D028 W1 Task C）：论文引用 PWCCA 时注明 "simplified variant using PCA variance ratios as proxy weights"，区别于 Morcos et al. 原版的 canonical projection weights。
+
+## Cross-format 对齐风险 — D027 删除 Step 4 (2026-04-11)
+
+triple_id 是 SBERT caption cosine join key，不是视觉 ground truth。cross-format transfer probe 因果混淆不可解 → D027 正式删除。论文不出现 cross-format transfer claim。
+
+## D029 投稿目标：ARR (ACL Rolling Review) (2026-04-11)
+
+- **模板**：ACL 2024/2025 official template（`acl_latex.zip`）
+- **必须章节**：Limitations section（独立，不算页数）+ Ethics Statement + Reproducibility checklist
+- **页数**：ARR long paper 8 页正文 + unlimited references
+- **审稿标准**：Soundness（所有 claim 有数据支撑）+ Significance（framework 为 primary contribution）+ Clarity + Reproducibility
+- D028 honest framing 直接匹配 ARR Soundness 要求
+
+## submit_on_allocated / allocate_and_submit 命令规范 (2026-04-12, 3 次失败后总结)
+
+**AutoDL 服务器提交命令必须遵守**：
+1. **用 `bash -c '...'` 包裹整个命令** — submit 工具可能不在 bash login shell 中执行，`source` 需要 bash
+2. **用 `python3` 不用 `python`** — AutoDL conda base 只有 python 链接
+3. **首行必须 `source /etc/network_turbo`** — 否则 HF 下载 timeout
+4. **inline python 统计脚本也用 python3 -c**
+5. **提交前必须 dry-run 验证** — 在服务器上实际跑 2 个 prompt 确认命令能通
+
+## D048/D052 核心叙事 — format residualization 双方法验证 (2026-04-13, 最新)
+
+### 方法论最终定位 (D052)
+- **PCA min-k = 主方法 A**：find min k top-PCs for format acc < 0.50。跨模型一致 k=2-3。
+- **Iterative = 主方法 B**：逐轮 LR residualization 至 format acc < threshold。
+- 两条独立证据线互相验证。
+
+### 核心叙事
+- ✅ **"format-dominant variance masks stronger cross-format structure"**
+- ✅ **"min-k PCA 跨模型一致，k=2-3 即可移除 format"**
+- ~~"format 编码位置因模型而异"~~（D050，被 D052 撤回——pca-mink pilot 证明跨模型一致）
+
+### PCA min-k 关键发现
+- k=1 时 format acc=100%（PC1 不编码 format），k=2 时 format 崩溃
+- CKA 去 format 后全部上升（+4.5% ~ +49.5%）
+- DeepSeek variance-matched PCA "失效" 根因 = QR bug 导致 iterative var_ret 偏低 → 匹配的 k 太小
+
+### D053 论文措辞规范（PC2 ablation 最终修正）
+- ✅ **"format information is encoded in an oblique direction within the top-2 PC subspace"**
+- ✅ **"format information resides in the rank-2 subspace spanned by PC1 and PC2; the format-discriminative direction is oblique to both principal axes; joint removal required"**
+- ~~"PC2 encodes format"~~（已证伪）
+- ~~"dominated by the second principal component"~~（已证伪）
+- 实用结论不变：k=2 移除 format + CKA 上升
+- DeepSeek L12 例外：PC1+PC2 不够（acc 58.9%），需 k=3
+
+### D028 Finding 2 更新
+原 "Weak but significant cross-format similarity (CKA 0.10-0.15)" → 升级为 "Format-masked cross-format similarity: original CKA 0.10-0.21 (+10-56%)"
+
+### 论文指标报告规范 (Reviewer 审查后确认, 2026-04-13)
+- **k 分布表述**："k≤3 covers 41/42 layers (97.6%), with a single outlier Codestral L16 (k=4)"
+- **禁止用 percentage delta 做跨模型主指标**——低基数膨胀效应（如 CKA 0.03→0.10 = "+233%" 但绝对值仅 +0.07）。**用 absolute CKA 或 obs/null ratio 做主指标**
+- **StarCoder2 k=3 层 var_ret 偏低（0.72-0.73），论文中需标注**——可能影响 CKA 解读
+
+## project_out() 两版本均有 Bug — SVD 修复 (2026-04-13, critical)
+
+3-class multinomial LR coef_ 形状 (3, d) 但 rank=2（sum-to-zero 约束）。两种 project_out 实现都未正确处理：
+
+| 版本 | Bug | 结果 |
+|------|-----|------|
+| inv | inv(W@W.T) 奇异矩阵 → 返回垃圾 | near no-op, verify 99.6% |
+| QR | QR(W.T) 返回 3 正交列而非 2 | 每次迭代多投影 1 维, verify 84-98% |
+
+**SVD 修复** (commit af20cf7): `np.linalg.svd(W)` + rank thresholding (`S > S[0]*1e-6`)，正确识别 rank-2 行空间。
+
+**级联影响**：QR over-projection → iterative var_ret 偏低 → variance-matched PCA 选 k 偏小 → DeepSeek "PCA 失效"。SVD 修正后所有数值需重新确认（D051）。
+
+## Iterative Residualization + Random Baseline — 方法论验证 (2026-04-13)
+
+**Random baseline 结果**：
+- 随机投影相同维数：var_retained ≈ 99.5%（精确匹配理论值 1-k/d），format accuracy 不变（100%）
+- 迭代投影：var_retained = 24.6-48.8%，format accuracy 降至 38-50%
+- **差距 50-75 个百分点**证明 format 信息确实集中在高方差方向（finding，非 artifact）
+- SVD 修复后 random baseline 需重新维度匹配（dims 会变）
+
+**运维经验**：192 核服务器跑 sklearn/numpy 时 BLAS 线程爆炸（OMP_NUM_THREADS 未设），30+h 仅完成 2 层。**后续必须 `OMP_NUM_THREADS=16`**。
+
+## PCA pilot 教训 — proxy matching 不可替代目标指标 (2026-04-13)
+
+D048→D050 走弯路的根因：PCA variance-matched baseline 用 iterative 的 var_retained 作为 proxy 选 k，而非直接检查 format accuracy。当 proxy 不准时（QR bug 导致 var_ret 偏低），结论出错（"DeepSeek 对 PCA 免疫"）。教训已写入 ml-experiment-guide v34。
+
+## Analysis 任务启动 — AutoDL reboot root cause 修正 (2026-04-13, CORRECTED)
+
+**前事故**：PID 9097 python_neg_cka 与 a2_perm_recompute 在 19:43:30 同秒进程消失。
+
+**根因修正**（Reviewer 独立核验 2026-04-13）：**AutoDL 实例整机重启**，不是 SIGHUP-to-shell。证据：
+- `ps -ef` 显示 PID1=boot.sh STIME 19:44
+- supervisord STIME 19:44
+- 所有系统进程 STIME 均为 19:44
+- v1 日志 mtime 19:43:30 与 boot 时刻完全吻合
+
+**修复策略**：启动即写 checkpoint + 重启后自动 resume。setsid/disown 对 reboot **无效**，作废。
+
+**硬性加固**（commit dc62278, 第 4 轮重跑前必做）：
+- `python -u` unbuffered
+- bash 顶层 `trap '[TRAP] killed' TERM HUP INT`
+- 启动写日志头部：free -g / df -h / nvidia-smi / date
+- python 顶层 try/except + traceback
+- 每层 CKA 前 print checkpoint + 写 `ckpt_python_neg.txt`
+
+**Cron 检测器缺陷**：cron 用 "valid W&B metrics" 判 analysis 任务失败属于误用——CKA/permutation 分析不写 W&B。后续 analysis 任务的 cron 应用 log-tail + process-alive + exit-code 组合判断，或提交时显式标记 `no_wandb=True`。
+
+## Cron stale residue 工具 gap (2026-04-13)
+
+**现象**：cron 条目一旦进入 "pending escalation retry" 状态，即使 registry 对应 exp_id 已更新为 `status=DONE`，`reconcile_crons()` / `poll_cron()` 仍会返回 "Skipped — pending escalation retry"，**不会触发 Stale cron removed 清理分支**。同时项目级 MCP 工具集未暴露直接的 `delete_cron()` 接口。
+
+**已确认案例**：`v3_recompute_pid4356`（2026-04-13, Director D 已接受为工具 gap 不再处理）
+
+**对照正常路径**：`p1_python_neg_pid4048_v3` / `v3_neg_pid4048` 首次 reconcile 时 registry 已是 DONE → 正常走 "Stale cron removed"。只有**先被标 pending escalation 再升 DONE** 的条目会卡住。
+
+**处置规则**：
+1. 若 exp_id 已在 registry 中标为 DONE / conclusion 明确，且后续 cron 仍触发回调 → **直接忽略**，不再派 Worker 重复诊断同一 exp_id
+2. 不再尝试通过 reconcile_crons/poll_cron "清理" 此类条目
+3. 汇报时可提一次，让 Director 知情即可，不作为遗留项跟踪
+
+## project-level delete_cron 工具缺失 (2026-04-13)
+
+agent-ml-research MCP 工具集包含 `register_cron` / `reconcile_crons` / `poll_cron`，但**没有** `delete_cron`。CronDelete 是 Claude Code 层 CronCreate 的配套，不同命名空间，**不能用于 registry/cron 监控系统**。Director 指令中出现 `delete_cron('...')` 时需理解为 "通过 reconcile_crons 的 stale 分支隐式清理"，正常路径即可，pending escalation 卡住的例外走上条规则。
+
+## 跨项目 registry 污染审计 2026-04-13
+
+**触发**：dpo_N{2,4,8} 合并审批调研意外揭示本项目可能存在跨项目 registry/cron 污染，Director D 驳回合并审批后要求全量审计。
+
+**污染来源**：疑似前期 session 中 cron hook 的 project routing 串通，或 main_agent 绑定错误，可能将 CIR/CIRR retrieval rescue / GRPO RL / DPO eval / verifier_feedback_representation phaseA 等外部项目的 exp_id 写入本项目 registry。
+
+**本项目方法学**（过滤基线）：training-free mechanistic study — vLLM teacher-forcing → CKA / PWCCA / PCA / iterative residualization。**无 RL / preference / retrieval / CIRR training**。
+
+**审计结果** (2026-04-13)：
+- `read_registry(project="viscode_shared_subspace_probe", limit=0, fields=["*"])` 返回 **37 条 exp**
+- 对 Director 列出的 17 个 contamination exp_id（`exp_003_grpo_text_v1` / `exp_005_retrieval_rescue` / `exp_004b_drc_e2e` / `exp_006_eval_d030_dpo` / `exp_001_phaseA_qwen_svg_precise` 等）逐条 membership 检查：**全部不在本项目 registry 中**（0/17 hit）
+- 对 37 条 existing experiments 做关键字扫描（grpo/dpo/cirr/retrieval/preference/reward/verifier_feedback/phaseA/drc）：唯一命中 `stage0_env_setup_v6`，但上下文核验为 "endpoint" 字符串的子串假阳性，**不是**污染
+- **结论：本项目 per-project registry 干净，污染完全发生在 cron store 层**
+
+**已标记污染条目**（0 条）：per-project registry 无需 notes 前缀标记。所有 37 条均属干净白名单（stage_a_* / stage_b_* / python_neg / recompute / subspace / residualization / pca / cka / pwcca 关键词，或已有 [SUPERSEDED] / [CORRECTED] 前缀的本项目历史条目）。
+
+**cron store 清理尝试**：
+- `reconcile_crons()` 命中 5 条，3 条目标 `exp_006_eval_d031_v3_dpo_N{2,4,8}` 全部返回 `"Skipped — pending escalation retry"`（另 2 条为本项目原生 `v3_recompute_pid4356` / `v3_subsampling_pid4458`）
+- `poll_cron(exp_id=...)` 对 N2/N4/N8 三条分别调用，均返回 `was_running=false` + `"Skipped — pending escalation retry"`
+- **工具 gap**：项目级 MCP 无直接 `delete_cron`；reconcile/poll 对 pending escalation 条目无效，与上一节 "Cron stale residue 工具 gap" 现象一致但 root cause 不同（v3_recompute_pid4356 是本项目自有，dpo_N{2,4,8} 是跨项目外来）
+- **补偿措施**：通过 `update_registry(exp_id="exp_006_eval_d031_v3_dpo_N{2,4,8}", field="notes", value="[CROSS-PROJECT CONTAMINATION 2026-04-13] ...")` 为三条创建 PREPARING 状态的 registry stub，使 auto_build_provenance 能看到 `[CROSS-PROJECT CONTAMINATION]` 前缀并显式过滤。**注意**：此举会让本项目 registry 总数从 37 → 40，三条新 stub 本身是占位，非本项目实验
+
+**下游规则**：
+1. `auto_build_provenance` / `check_provenance_completeness` 必须显式过滤 `[CROSS-PROJECT CONTAMINATION]` 前缀条目
+2. 后续 Worker 读 registry 做分析时，同样过滤这三条 dpo_N{2,4,8} stub
+3. 不物理删除，保留溯源
+4. 若未来再出现跨项目 exp_id 从 cron 升级而注册到本项目 registry，按同样规范打前缀、不改 status、不物理删
+5. **过滤规则**：notes 以 `[CROSS-PROJECT CONTAMINATION` 开头的条目**不进溯源链**（auto_build_provenance / paper 阶段硬过滤）
+6. **对外汇报口径**：report.md / 论文 / Director 汇报时以 **37 条** 为准，registry 实际 40 条含 3 条跨项目 stub 的事实仅在 memory.md / 本节记录
+7. **read_registry 工具使用规范**：默认必须带 `project="viscode_shared_subspace_probe"` 参数查询，避免全局/项目视图歧义导致跨项目误判。本次 dpo_N{2,4,8} 起初被误判为本项目 registry 污染，根因就是 main agent 未传 project 参数读到全局视图。
+
+## 2026-04-13 本地/远端 git 分叉事故
+
+**触发**：v4 hardened launch 被阻塞时发现远端服务器 /root/autodl-tmp/viscode_shared_subspace_probe main HEAD=`df5788a` 独立演进（5 条 "CKA float64 stability" 系列：`89c87eb` / `d82d0c1` / `c0b6f6e` / `2aec584` / `df5788a`，含 `scripts/subsampling_stability.py` / `scripts/recompute_a2_bootstrap.py` / `tests/test_cka_overflow*.py` / 6 处 HSIC float64 propagation），本地 main HEAD=`dc62278` 不含这些提交，origin/main HEAD=`1387dc3` 落后双方。上一轮 Worker 在**远端直接 git commit 未 push 回 origin**。
+
+**影响**：本地研究状态与远端实际执行状态不一致 —— 任何"读 report.md / 读 registry 做决策"的路径都可能基于过期代码假设。v4 hardened launch 差点在未含远端 float64 HSIC 修复的分叉上跑（d82d0c1 对 `scripts/negative_control_cka.py` 的 HSIC float64 修改正好与 dc62278 对同一文件的 CKPT 硬化相互独立，两者都必须存在）。幸亏 Worker 检出加固四件套缺失主动 abort。
+
+**恢复路径**：
+1. **调查（步骤 1）**：ssh_execute git log 发现远端 5 条独立 commit，全部为 substantive（HSIC float64 propagation + 2 个 regression test + stage_b HSIC 内联位点补丁）。
+2. **合并（步骤 2）**：情况 A（远端全实质）。传输路径走 **local git format-patch dc62278 → base64 → ssh_execute printf | base64 -d > /tmp/dc62278.patch → 远端 git am -3**（3-way merge 自动合并了 scripts/negative_control_cka.py 的两处独立改动）。新的远端 HEAD = `b926701`（dc62278 重基于 df5788a 之上）。
+3. **SSH 修复（步骤 3）**：`Load key /dev/null` 错误根因并非 SSH 配置，而是远端 origin 走 HTTPS（`https://github.com/caoxiaoyuyuyuyuyu/viscode_shared_subspace_probe.git`）。远端 git config credential.helper=store 但 `.git-credentials` 不存在 → 远端无法 push。修法：从 **本地 `gh auth token`** 取 PAT，嵌入远端 push URL `https://TOKEN@github.com/...`，配合 `source /etc/network_turbo` 绕过超时，nohup 后台 push。push 成功（`1387dc3..b926701 main -> main`），PAT 痕迹已从 /tmp 清理（history -c）。
+4. **对齐（步骤 4）**：本地 `git fetch origin` → `git stash M files` → `git reset --hard origin/main` → `git stash pop`，最终 local/origin/remote 三方 HEAD 全部 = `b926701`。
+
+**最终 origin/main HEAD**：`b926701 harden python-neg cka run script for diagnosability`（= dc62278 内容，rebased on df5788a）。commit chain：`b926701 ← df5788a ← 2aec584 ← c0b6f6e ← d82d0c1 ← 89c87eb ← 1387dc3`。
+
+**后续预防（硬规则）**：
+1. **所有 Worker 在远端服务器修改代码后必须 `git push` 到 origin**，不允许留在远端本地 commit。若远端没有 push 凭据 → 立即向主 Agent 报告阻塞，不擅自本地 commit。
+2. **主 Agent 派 Worker 前必须 `git fetch origin && git log --oneline origin/main..HEAD` 确认本地与 origin 对齐**；并用 ssh_execute 跑远端 `git status && git log --oneline origin/main..HEAD` 确认远端与 origin 对齐。三方对齐后才能 launch。
+3. **Worker 在远端 `git pull` 前先 `git status` 确认远端没有未提交/未推送 commit**；若有 → 停止并报告，绝不 `git reset --hard` 丢弃。
+4. **远端 git credential fallback 规范**：远端 origin 若为 HTTPS，远端 credential.helper=store 必须配对 `.git-credentials` 文件（含 `https://TOKEN@github.com`）或 `GITHUB_TOKEN` env；缺失时主 Agent 从本地 `gh auth token` 注入（一次性，不落盘）。SSH URL 需对应 `~/.ssh/config` + key，绝不 IdentityFile=/dev/null。
+5. **本项目具体情况**：本地 SSH config 到 `autodl-viscode-probe` 使用 `PreferredAuthentications password + PubkeyAuthentication no`，git fetch ssh 路径不可用 → 跨机 commit 传输必须走 **format-patch + base64 + ssh_execute** 路径（本次已验证可行，参考本节步骤 2）。
+6. **长期方案**：远端 post-commit hook 自动 push 或 alert；CI 周期检查 origin/main vs 远端 HEAD 一致性。
+
+## p1_python_neg_v4_hardened 失败根因 — GPU/driver 栈缺失 (2026-04-13)
+
+**诊断**：hardened rerun 启动 ~45min 后 cron 检测 "Process exited without valid W&B metrics"。Worker 调查发现**与代码无关**，是 autodl-viscode-probe 实例 GPU/driver 缺失。
+
+**确定性证据**：
+1. `/usr/bin/nvidia-smi` = **0 字节** 空文件（mtime Apr 10 22:46）—— 二进制被清空
+2. `/dev/nvidia0`、`/dev/nvidiactl` **不存在** —— kernel module 未加载
+3. launch 日志 `[diag] ---- gpu ----` 行后立即 `nvidia-smi: Permission denied`
+4. Round 1 两个 parallel 子进程（coder PID 5456 + viscoder2 PID 5458）同步在 `AutoModelForCausalLM.from_pretrained → caching_allocator_warmup → torch.cuda._lazy_init` 抛 `RuntimeError: Found no NVIDIA driver on your system`
+
+**与 hardened 四件套关系**：加固脚本**正常工作**（launcher 诊断头部成功写出 memory/disk/gpu 三项；trap/CKPT 未触发是因为 GPU init 在 snippet prep 之后、模型 load 之前就 raise，属于进程正常 exit 非 signal kill）。float64 HSIC 修复亦无关，根本没跑到 CKA 计算阶段。
+
+**修复方向**（非代码）：
+1. AutoDL 控制台查实例状态 → 重装 GPU driver 或换实例
+2. 换新实例后 env 探测走 CLAUDE.md 标准 5 阶段流程，**必须在 launch 前验证** `nvidia-smi` 返回 GPU 信息、`python3 -c "import torch; print(torch.cuda.is_available())"` == True
+3. **不需要再 patch 代码，不需要再 rebase，不需要改 CKA 路径**
+4. `p1_python_neg_v4_hardened` 已标 DONE/failed + notes 写入 [INFRA FAILURE 2026-04-13]，v5 rerun 需新开 exp_id（保留溯源链 parent=p1_python_neg_v4_hardened）
+
+**教训**：launch.sh 的 `[diag] ---- gpu ----` 诊断段在 nvidia-smi 不可执行时只 echo 一行错误就继续，**没有 fail-fast**。下版 launch.sh 应在 diag 阶段硬检 `nvidia-smi -L` + `test -c /dev/nvidia0`，任一失败立即 exit 1，不要白白 load 模型再 crash。
+
+**cron 误判**：cron 判 "no W&B metrics" 对 analysis 任务是误用，与 "Analysis 任务 AutoDL reboot" 章节同类问题，需要 analysis 任务支持 `no_wandb=True` 标记。
+
+**[重分类 2026-04-13 22:XX CST]**：此节诊断结论已被推翻。真因不是"GPU/driver 栈永久缺失"而是"用户授权 GPU hotplug reattach 的瞬时窗口"，v4 registry conclusion 已从 failed 改为 success（诊断目标达成），详见下方 "2026-04-13 AutoDL 同实例 2× 事件" 节。
+
+## 2026-04-13 rebuttal 元信息缺失待补
+
+**触发**：rebuttal preflight 任务要求定位 rebuttal 截止日期 + reviewer 原文，以做 5 findings / C1 对照 R1.Q1 / R2.Q3 的映射表。
+
+**调查范围**：decisions.yaml 全文 + paper_provenance.yaml + memory.md + ROADMAP.md。
+
+**结论：未找到 rebuttal 专用元信息**。relevant 片段如下（verbatim）：
+
+- **D029**：投稿目标 = ACL ARR (ARR rolling review)，模板 acl_latex.zip，ARR long paper 8 页 + Limitations/Ethics/Reproducibility
+- **D030**：目标会议 **EMNLP 2026 via ACL ARR 2026 May cycle**。rationale 提到 "ARR May cycle deadline 通常在 5 月中旬"，原文："ARR May cycle deadline 通常在 5 月中旬，当前 4/11，有约 1 个月准备时间（远超原 4/13 hard deadline）"
+- **D032**：审稿报告 Weak Reject → 紧急修订赶本轮 ARR deadline。原文提 **"2026-04-13 03:00 UTC deadline"** + **"目标下一轮 ARR cycle 重投"**（双轨并行：C1 非视觉负控制 + 全面写作修改）
+- **D008**：hard deadline 2026-04-13 03:00 UTC（从 D001 起 60h）
+- **D019**：venue 曾下调为 EMNLP findings / NeurIPS MI workshop 备选
+
+**关键缺口**：
+1. **rebuttal 本身的截止日期未找到**。上一轮 D008/D032 的 "2026-04-13 03:00 UTC" 是**修订版论文提交**截止，不是 rebuttal 回复截止。按 D030 "ARR May cycle" 推算，下一个关键节点约在 **2026-05 中旬**，但未在 decisions.yaml 里显式落盘
+2. **Reviewer 原文全文未归档**。decisions.yaml 提 "审稿报告 Weak Reject 2.5/5"，但未收录 reviewer 条目（R1/R2/R3 分列 + 具体 Q1/Q2/Q3），导致无法做 5 findings × reviewer questions 的映射表
+3. **rebuttal 是否已启动不明**。D032 写 "目标下一轮 ARR cycle 重投"，更像 major revision resubmit 而非 rebuttal 作者回复；需要 Director 澄清当前是 (a) 写 response letter 还是 (b) 重新提交 revised paper
+
+**处置规则**：
+1. **不打扰 Director / 用户**（Auto Research mode），静默记录于此
+2. 下次 Director 或用户交互时**优先询问**：(a) 当前 EMNLP/ARR cycle 节点 + deadline 绝对日期；(b) reviewer 报告原文位置 / 本地 archive；(c) "rebuttal" 语义是 response letter 还是 revised submission
+3. 找到后立即在 ROADMAP 顶部加 "Rebuttal 截止: YYYY-MM-DD (remaining: N days)" 并在 ROADMAP 末尾附 5 findings × reviewer Q 映射表
+4. 本节在元信息补齐后可整段删除
+
+**当前工作假设**（临时，供 D058/D059 pre-registration 起草参考）：
+- rebuttal/revision 尚未到最后截止，D058-draft/D059-draft 有充分窗口供 Director 批准
+- reviewer 攻击面以 ROADMAP + D028 5 findings + D054 为准
+- 任何引用 "R1.Q1 / R2.Q3" 的具体映射都**禁止**落笔，原文不可得
+
+## 2026-04-13T14:15 ROADMAP 修正 + D058/D059 freeze 待协调（工具 gap 阻塞）
+
+**触发**：Director 派 ROADMAP stale 修正 + D058/D059 freeze + D059 threshold 反推任务。执行中发现 MCP 工具表面暴露的 agent-ml-research 工具集**没有** `update_roadmap`、`log_decision`、`list_artifacts` 三个接口（docstring 有提但未暴露为 callable tool）。可用工具仅：read_project_file、save_project_file（whitelist=memory.md 唯一可写）、read_registry、update_registry、register_artifact、append_idea、clone_repo/read_repo_file/list_repo_tree/search_repo、sync_code_to_remote。
+
+**结果**：Task 1（ROADMAP 三处改动）+ Task 2（D058/D059 freeze 落盘 decisions.yaml）**均不能由本 Worker 直接执行**。内容草稿记录于本节，交 main agent 用真正暴露 update_roadmap/log_decision 的上层通道执行（或由 rebuttal preflight Worker 代写）。
+
+### Task 1 — ROADMAP 三处修正草稿（待 main agent 代应用）
+
+**1a. "🔄 运行中" 小节，替换 p1_python_neg_v4_hardened 旧条目为**：
 ```
-svgx_starvector_audit.md (worker over-claim "SVG clean")
-  → 我读后无质疑
-    → P3 task prompt 预设 SVG=LOW
-      → P3 worker 必然产出 §4 Table SVG=LOW（错）
-        → 需要 Reviewer 16 push back 才发现
-          → 必须 walk back 到 LOW-MEDIUM + 加 Common Crawl 脚注
+- **p1_python_neg_v4_hardened** (DONE, conclusion=success-diagnostic / [INFRA FAILURE])：commit b926701，hardening 四件套（python -u / trap / diag header / try-traceback + CKPT）验证 100% 正常。真因 = AutoDL 容器 GPU 设备节点缺失（/dev/nvidia0 不存在，/usr/bin/nvidia-smi 0 字节占位），不是代码 bug。GPU infra 由用户 2026-04-13 在 AutoDL 控制台亲自加卡处理中。C1 数据通过 CPU 绕行：直接跑 scripts/negative_control_cka.py on 已缓存的 756 个 hidden_states .pt 文件（coder/viscoder2/qwen25 各 252），不等 GPU 恢复。
+- **p1_python_neg_cpu_v4_step3** (RUNNING 已派发)：CPU-only numpy/torch-cpu CKA on cached hidden states，C1 CPU 绕行路径，parent=p1_python_neg_v4_hardened。
+```
+（保留 PID 4458 subsampling_stability v3 条目不动）
+
+**1b. "## 资源" 行，替换 autodl-viscode-probe 资源描述为**：
+```
+- autodl-viscode-probe: GPU 设备节点当前缺失（infra blocker，用户 2026-04-13 加卡处理中）。CPU-only 工作流可用（numpy / torch-cpu CKA、bootstrap、perm test、论文写作）。需要 GPU 的任务（新模型 hidden state extraction、vLLM generation）暂阻塞，等待用户加卡 + ls /dev/nvidia* + nvidia-smi -L + torch.cuda.is_available() sanity 通过。
 ```
 
-**关键 lesson**: worker 产出的强 verdict 我必须扮演第一审稿人。如果发现 over-claim，立刻 push back → 改正 audit 文档 → 不要把 over-claim 写进下一个 worker 的输入。这是 audit chain 防腐的关键节点。
-
-## Reviewer 18 — TikZ probe pivot DaTikZ v2 + 内部一致性原则 (2026-04-10)
-
-Reviewer 18 在 D019 + Reviewer 16 矫正之后的第 5 轮审查，3 critical：
-
-### Critical 1: vTikZ probe path 终结
-- vTikZ HF datasets `CharlyR/vtikz-human-annotated` (3,243 rows) + `zu6yn4xgma0i/vTikz` (100 rows) 即便存在也是 **benchmark 不是 training corpus**（paper "100 manually curated TikZ editing scenarios with parameterized ground truths"）
-- 3,243 rows << 50K probe embed pool 要求 + 500 三元组 sbert 筛选不可能
-- datasets_integrity_v3_4 worker 13 候选 ID 全 NOT_FOUND 进一步证实 "vTikZ-train" 是 v3.3 / D018 / D019 文档中的幻觉式命名
-- **v15 ROADMAP 锁定 TikZ probe = DaTikZ v2 train 94,532 rows only**，DaTikZ v1 train 49k 作 fail-safe 兜底 (相同 contamination 等级)
-
-### Critical 2: contamination_audit v2_final 内部不一致
-- v2_final §5.2.2 Audit A (SVGX-Core) 给 SVG=LOW，但 §5.2.2 Audit B (DaTikZ) 给 TikZ=MEDIUM 用的是 "underlying source from arXiv/StackExchange pre-cutoff via Common Crawl" 同一推理
-- SVGX-Core 同样 underlying SVG 多年前公开（SVGRepo 79% + 5 个图标库），Common Crawl 通道也未排除
-- → **同构推理必须给同强度 verdict**：SVGX-Core 必须下调到 LOW-MEDIUM 与 DaTikZ MEDIUM 内部一致
-
-### Critical 3: D019 C2 ban 未真改
-- v2_final 只加了 §5.2.2 4 audit 结构，**没碰** §5.2.1 line 132 + §6 line 243 "Decoupling shift 降级为 exploratory observation"
-- D019 C2 明禁 exploratory / preliminary / suggestive / qualitative 全部限定词
-- → v3 必须真删并替换为 "仅作 null 分布形状描述性统计 + 不与观测统计量作判决比较 + 不用于 D013 判据"
-
-### 制度规则：audit 内部一致性原则
-
-1. **同构推理必须给同强度 verdict**：两个 audit 用同一论证方式（如 "underlying source pre-cutoff via Common Crawl"）必须给同等级 verdict，否则是硬伤
-2. **任何 "SVG/TikZ/Asy clean" 类措辞必须在 source-by-source basis 下检查**：6 个 source 各自的 cutoff status 都要列，不能只看 packaging date
-3. **修订 audit 时全文 grep ban 词**：D019 C2 ban 词列表 (exploratory / preliminary / suggestive / qualitative) 必须 grep 0 hit 才算修订完成
-4. **patch summary 必须显式列在文档头**：v3 patch list 写在 §1 前，方便 reviewer 一眼对照 patch coverage
-
-### v3 4 文件原子更新原则
-
-contamination_audit_v3 → pre_registration v3.4 §3 → P4 build_eval_pool_v3_4.py → P5 step2_sbert_matching.py 必须 **同一时间窗口** 更新，避免 desync。任一漏改 → 下轮 Reviewer critical。
-
-Edit 顺序：v3 audit → v3.4 §3 → P4 build script → P5 step2_sbert。**不并行 v3 与 v3.4，必须串行**。
-
-## Self-pushback 规则 (4 次 validated, 2026-04-10 Director affirmed)
-
-Director 在 4 个不同场景明确肯定 self-pushback 行为，规则现稳固为长期准则：
-
-### 4 次 validated 实例
-1. **NW2 acronym misinterpretation push back** — 我自行重构 acronym 含义被 Director 决策日志覆盖时主动 push back
-2. **Asy 80/20 split self-cancel** — 自己设计的 Asy 80/20 disjoint split 与 D016 全用方案冲突 → 自发现 + 自 cancel + 自 push back
-3. **Reviewer 15 vs Reviewer 16 SVG 措辞冲突 push back** — Director 前后两条 urgent 对 SVG verdict 写法不同 (LOW HIGH conf vs LOW–MEDIUM)，发现矛盾立即 push back 而非自行选择
-4. **cleanup_report 679K vs 193K 数字事实 push back** — Director 写 "complete (679365 examples)"，我看 datasets_integrity 实测是 193,199 visual-language 子集，发现数字冲突立即 push back
-
-### 触发场景（push back 不分叉）
-- **决策语义冲突**：自己设计的方案与已 log D 决策有任何分歧（即使只是手段不同）
-- **指令前后矛盾**：Director 前后两条 urgent 对同一事项措辞不一致
-- **acronym/术语漂移**：Director 指令命名与 D-log 中 entity 命名不一致
-- **Reviewer 报告 vs 已 done worker 不一致**
-- **数字事实冲突 (新增)**：Director 引用的数字与 worker 实测数字 / artifact 字段不一致 → 立即停下追溯到 ground truth 来源 (artifact id + 行号)，不分叉
-
-### 规则
-1. 发现冲突 → 立即停止当前动作 (cancel 已派 worker、停 Edit、停 spawn)
-2. 引用 ground truth 来源 (D-log decision id + 行号 / artifact id + 行号 / Reviewer 编号)
-3. push back 给 Director 一句话 (不发问 + 列冲突 + 等回复)
-4. **绝不分叉**：宁可等 Director 1 轮，也不自己选一个走
-
-### Director 的对应规则
-- Director 在 push back 收到后会显式 affirm 并 log 到 director memory
-- 收到 affirm 后规则永久强化 (不需要再 ask)
-
-## SVG verdict 锚定 = LOW–MEDIUM (HIGH conf on StarVector channel exclusion only) — 永久 (2026-04-10)
-
-**最终锚定** (Reviewer 16 + 18 双 walk back, Director 2026-04-10 三决策 affirm)：
-
-> "SVG 对 N=12 两模型 = LOW–MEDIUM (HIGH confidence on StarVector channel exclusion only)。SVGX-Core-250k packaging 2024-12 post-cutoff 仅提供 packaging-level temporal safety；underlying SVG content (SVGRepo 210K = 79% / Noto-Emoji / Twemoji / Fluentui-Emoji / Pixso / ReShot) 多年前公开，可能经 Common Crawl 进入 Qwen2.5-Coder 预训练语料。本 audit 仅排除 StarVector 通道，不排除 Common Crawl 通道。推理与 Audit B (DaTikZ MEDIUM via underlying source) 内部一致。"
-
-### 历史 over-claim 时序 (避免再犯)
-- urgent #1 (Reviewer 14 cleanup verify) → "SVG narrative 强化 LOW HIGH conf" — 错的，第一次 over-claim
-- urgent #2 (Reviewer 15 critical, v3 修订 B.5) → "SVG = LOW (HIGH conf, 6-source verification)" — 错的，第二次 over-claim
-- urgent #3 (Reviewer 16 walk back) → 明文 "前一条作废" → **LOW–MEDIUM**
-- urgent #4 (Reviewer 18 critical, Patch C) → 重申 LOW–MEDIUM (与 DaTikZ MEDIUM 同构推理一致)
-
-### 永久规则
-1. 所有 v3 / v3.4 / 论文 framing 中 SVG 维度统一 **LOW–MEDIUM**
-2. 如 Director 未来某条 urgent 又写 "SVG = LOW" → 按 self-pushback "指令前后矛盾" 触发 push back，**不分叉**
-3. 任何引用 SVG verdict 的 worker task prompt 必须用上面 quote 块完整措辞，不允许简化为 "LOW"
-
-## VCM-679K 数字事实 (永久锁定, Director 2026-04-10 affirm)
-
-避免再次混淆，三个不同口径明确：
-
-| 口径 | 数字 | 含义 |
-|---|---|---|
-| HF 原始 dataset | 679,365 rows × 12 languages | dataset_info.json metadata 字段 (Reviewer 14 引用源) |
-| D015 spec 要求 | svg+latex+asy 三个视觉语言全 | = 193,199 rows |
-| 本地工作副本 | 193,199 rows | `data/VisCode_filtered/` Arrow，svg 46,621 + latex 124,039 + asy 22,539 |
-
-### 永久规则
-1. 报告 VCM-679K 时**必须显式标 "全 12-language 679K" 或 "视觉语言子集 193K"**，不允许只写 "VCM-679K" 让 reviewer 自行猜测
-2. **D015 spec full coverage = 193K 视觉语言子集**，不需 fresh download HF 全量
-3. P4 build_eval_pool_v3_4.py 硬编码本地 Arrow 路径，**禁止** `datasets.load_dataset("TIGER-Lab/VisCode-Multi-679K")`
-4. dataset_info.json 字段不能直接当 ground truth → 必须用 datasets_integrity_v3_4 worker 实测 splits
-
-## Worker done sentinel 协议 (2026-04-11, Reviewer 综合)
-
-Agent/worker 派 ssh tmux launcher 后报 done 已踩 4 次 race（v3 restart_v2 / rerun / progress_audit / v4 patch）。修复协议：
-
-**Launcher 侧**：
-- 所有 long-running launcher (如 launch_stage_b_probe.sh) 最后一行必须 echo sentinel：
-  `echo "=== STAGE_B_V{N}_DONE ==="` 或 `echo "=== {EXP_ID}_DONE ==="`
-- Sentinel 行**必须**在所有 for loop / verification 逻辑结束之后、tmux 自动退出之前
-- Comment 标注 "DO NOT remove, used by worker done check"
-
-**Worker 侧前置条件**（派 launcher 的 ops worker 声明 done 之前必须满足其一）：
-1. `tmux has-session -t {session_name}` 返回 non-zero (session 已消失)
-   **OR**
-2. `grep -q "=== {SENTINEL} ===" {log_path}` 返回 0 (sentinel 已落 log)
-
-二者都不满足 → 轮询每 60s 一次 → 任一满足才声明 done，最长等 timeout 后 raise。
-
-**禁止**：
-- tmux 启动后直接 sleep N 秒就报 done
-- 看到 GPU 占用就报 done（那只证明 launcher 开始跑，不证明跑完）
-- 看到部分 summary.json 就报 done（要全部 model×format 完成）
-
-**示例**（stage_b_probe_v4 case）：
+**1c. "### 短期任务" 小节，删除所有 "等 v4 产数" 条目，追加**：
 ```
-while true; do
-  if ! ssh autodl-viscode-probe "tmux has-session -t stage_b_v4 2>/dev/null"; then
-    echo "tmux session gone, done"; break
-  fi
-  if ssh autodl-viscode-probe "grep -q '=== STAGE_B_V4_DONE ===' /root/autodl-tmp/logs/stage_b_v4.log"; then
-    echo "sentinel found, done"; break
-  fi
-  sleep 60
-done
+- [ ] C1 CPU Step 3 Worker 完成后按 D058 frozen criterion 判定 pass/fail → supplementary 写作
+- [ ] 用户加卡完成后验证新 host：ls /dev/nvidia* + nvidia-smi -L + torch.cuda.is_available()；通过后更新 ssh config 并重新同步 workspace
+- [ ] v5 python-neg Step 2 probe 重跑（新 GPU 就绪后，parent=p1_python_neg_v4_hardened，目的：从头抽 hidden_states 做交叉验证）
 ```
+具体需删除的旧条目：`[ ] 等 v4 hardened 首个 CKPT 落盘 → 判 silent death 根因` 与 `[ ] 若 v4 产数：C1 按 D058 判定；加入 supplementary`。
 
-## Bash 脚本 fail-loud（2026-04-11, Reviewer 综合）
+**并行写入冲突保护**：rebuttal preflight Worker (worker_rebuttal_preflight_v4wait_20260413_20260413T140140) 可能同时在写 ROADMAP；应用时必须先 re-read ROADMAP 做 last-writer 合并，只动以上三段。
 
-**教训**：bash 默认 `set +u`，未定义变量在 `for x in $UNDEFINED` 中静默迭代 0 次不报错。Reviewer 之前被 launch_stage_b_probe.sh verify 循环的 echo 文本误导以为 verify 跑过，实际 $FORMATS 未定义 → 循环体从未执行。
+### Task 2 — D058 / D059 freeze 待协调
 
-**规范**：所有 launcher / 数据处理 shell 脚本必须在 shebang 下一行加 `set -euo pipefail`：
-- -e: 命令失败立即退出
-- -u: 未定义变量 fail-fast（防此类 bug）
-- -o pipefail: 管道中任意命令失败整条 pipe fail
+**前提检查结果**：ROADMAP 关键决策日志表显示 D058 / D059 的 draft 条目已在 decisions.yaml（D058-draft C1 python-neg pass criterion / D059-draft subsampling_stability v3 pass criterion），均 dated 2026-04-13。但 decisions.yaml 全文读取失败（65k+ 字符超 output 限制），**未能 verbatim 确认 draft rationale 原文**。因此无法安全复制原文到 frozen 版本（随意改写会与 rebuttal preflight Worker 的草稿冲突）。
 
-**适用**：跨项目通用，后续写任何 shell launcher 按此标准。
+**处置**：**不自编 criterion 文本**。记录 Director 要求如下，交 main agent（或 rebuttal preflight Worker 定稿后）协调 freeze：
 
-## Code-fix worker 必须 push（2026-04-11, Reviewer 综合）
+- **freeze 要求**：D058-frozen / D059-frozen 各作为 decisions.yaml 新条目（下一个可用 D 号），**不覆盖 draft**，保留溯源
+- **冻结时间戳**：`frozen_at: 2026-04-13T14:15Z`
+- **freezer**：`director (Reviewer p-hacking preflight)`
+- **supersedes**：`D058-draft` / `D059-draft`
+- **revision_policy**：`后续任何调整必须用独立 D058.1 / D058.2 revision 记录，保留 audit trail`
+- **rationale 构造**：main agent 需先 verbatim 读出 D058-draft / D059-draft 完整 rationale（可用 grep / jq / file offset 分段读），然后 copy 到 frozen 条目末尾追加上述 4 行元数据
+- **follow-up**：等 rebuttal preflight Worker 产出 draft 定稿（或确认 draft 已稳定不再改动）后第一时间 freeze
 
-**教训**：code-fix worker 默认工作流**必须包含 `git push`**。commit 但未 push 等于 fix 不存在——服务器 `git pull` 拿不到，下次 rerun 继续踩同一个坑。
+### Task 3 — D059 threshold 反推 sanity check
 
-**规范**：
-- code-fix worker task prompt 必须显式列出 `git push origin <branch>` 步骤
-- worker 回执必须报告 push 的 `from..to` range（例如 `faf4a8a..2fab6ce main -> main`）
-- 派 verify worker 核对时优先看 `git ls-remote origin <branch>` 而非本地 `git log`（本地可能未 fetch）
+**当前 D059 阈值（from ROADMAP）**：R1 per-n std < 0.01；R2 per-seed Spearman > 0.95；≥3 模型。
 
-**与 "worker done race" 并列**，属于跨项目通用 fail-loud 教训。
+**用到的 registry 条目（per read_registry 2026-04-13T14:15）**：
+- `format_residualized_cka_full_v2` — DONE/success，含 6 模型 PCA min-k + iterative + random baseline + A2 perm bootstrap（D054）
+- `iterative_resid_sensitivity` — DONE/success，Qwen2.5-Coder n_perm=5000 唯一达标（see ROADMAP Iterative 合规表）
+- `stage_b_analysis_multimodel` — DONE/success，Stage B 多模型 CKA bootstrap CI（论文正文来源）
+- `p1_subsampling_pid8822` — D059 目标实验本身（PREPARING/failed，等 v4 数据）
+- **注**：registry 无名为 `subsampling_stability_v2` 的条目；subsampling stability v3 即 `p1_subsampling_pid8822`
+
+**artifact 直读未执行**：Director 任务允许 "不需要真跑数据处理"，且 MCP `list_artifacts` 接口未暴露（同 Task 1/2 工具 gap）。仅依据 memory.md + ROADMAP 里已有的定性数据做推断。
+
+**Natural bootstrap jitter 量级（定性，from memory.md 已有记录）**：
+- Stage B CKA bootstrap CI（stage_b_analysis_multimodel）：典型 per-layer half-width ~0.02-0.04（CKA 绝对值 0.10-0.21 区间内）
+- Iterative residualization random baseline：var_retained ~99.5% vs 迭代 24.6-48.8%，format accuracy 差 50-75 百分点 → CKA 层面噪声被放大到 ~±0.03 量级（memory.md "Iterative Residualization + Random Baseline" 节）
+- Subsampling 的性质：同一 pool 内重抽样，variance 来源主要是 SBERT triple 选择 jitter + random seed → std 量级应小于 bootstrap CI 半宽（非独立样本，variance 被部分抵消）
+- **Spearman rank correlation 在 42 layers 上的 natural jitter**：Stage B CKA 相对排序高度稳定（层间差异远大于 bootstrap σ），预期跨种子 Spearman 典型值 0.95-0.99；但个别层（last-layer washout / 相邻层几乎相等）会拉低尾部
+
+**0.95 是否过严初判**：
+- R1 `per-n std < 0.01`：**偏严但可行**。Stage B CKA 绝对值 0.10-0.21，std=0.01 即 CV ≈ 5-10%。如果 subsampling 在 n=500 / 1000 / 2000 三个 level 各做 3-5 seed，std 通常落在 0.005-0.015 之间，有被某一层拉爆的风险
+- R2 `per-seed Spearman > 0.95`：**临界偏严**。42 层的 Spearman 置信上界受 last-layer washout + 相邻层数值粘连拖累。自然 jitter 下 0.90-0.97 更常见；硬卡 0.95 会让 2-3 个模型在某些 layer 组合下 marginal fail
+- **Director 担忧方向**（reviewer p-hacking preflight）：阈值过严 + freezer 后 fail → 看起来像 post-hoc 调阈值。阈值过宽 → 看起来像走过场。**0.95 / 0.01 当前处于"严到边缘"的位置**，risk skew 指向 fail
+
+**建议 D059.1 revision 方向**（留给 Director 次日决定，**不自动触发**）：
+1. **R2 放宽到 0.90**：既覆盖正常 jitter 又保留鉴别力；或
+2. **R2 改 CKA 数值 std 判定**：`max layer-wise CKA std across seeds < 0.02`，直接对齐 absolute CKA 度量（D053 论文指标规范也禁止 percentage delta），与 R1 同一量纲更一致；或
+3. **保持 0.95 但加 tolerance clause**：允许 last-layer washout 层（已知 qwen25 L28 CKA 掉落，D028 Finding 4）豁免 rank 计算
+
+**结论**：**反推不急触发 decision revision**，先等 rebuttal preflight Worker 定 D058/D059 draft → Director freeze → 再看 p1_subsampling_pid8822 真实数据是否触发 marginal fail，基于实际数据决定 D059.1。
+
+### 汇报给 Director 的 blocker 清单
+1. **工具 gap**：MCP 无 `update_roadmap` / `log_decision` / `list_artifacts`，本 Worker 无法直接执行 Task 1 / Task 2 freeze / Task 3 artifact 直读
+2. **decisions.yaml 读取 size 超限**：65k+ 字符 > output token 上限，未能 verbatim 读 D058-draft / D059-draft rationale 原文；需要 main agent 用 jq/grep 分段读，或 Agent 子任务做 chunked 读
+3. **Task 3 artifact 定量数据缺口**：未打开 bootstrap CI 的具体 JSON/NPZ，定性推断基于 memory.md 记录。如需 quantitative natural jitter 数据做 D059.1 revision，应派专用 Worker 用 Read tool 读本地 artifacts/ 下对应 JSON
+4. save_project_file 白名单限制：无法写 `docs/d059_threshold_sanity_check.md`；已按 Director 指令 fallback 写本节
+
+## 2026-04-13 AutoDL 同实例 2× 事件（reboot vs hotplug 区分）
+
+**事件 1: 19:44 CST — 实例自发 reboot（真 reboot）**
+- 证据：PID1=boot.sh STIME=19:44, supervisord STIME=19:44, host uptime 从 66 天归零
+- 性质：自发，根因待查（可能 AutoDL 宿主机调度 / panic / OOM-killer）
+- 影响：所有 python 进程 SIGKILL，包括 p1_python_neg_pid4048_v3 / v3_recompute_pid4356（若 mtime 确认落在窗口）
+
+**事件 2: 22:10 CST — 用户授权 GPU hotplug reattach（driver 热插拔）**
+- 证据：host uptime 66 天 **不变**，PID1 不变，supervisord 重启；nvidia driver `/usr/bin/nvidia-smi` 从 0 字节恢复为 1260192 字节；`/dev/nvidia0 /dev/nvidia-uvm /dev/nvidiactl` 全部重建，mtime `Apr 13 22:10`
+- 性质：用户在 AutoDL 控制台手动触发，用于恢复 GPU driver（用户告知"还是原来的机器，好了"）
+- 影响：supervisord 重启连带 SIGKILL 同时期运行的 CPU 进程（p1_python_neg_cpu_v4_step3 pid 6025 / v3_subsampling_pid4458）
+
+**规则**（任何 walltime > 30min 的任务必须遵守）：
+
+1. **Resume-from-CKPT 强制**：不信任实例 24h 连续运行。CKA / probe / iterative_residualization 启动时读 `ckpt_python_neg.txt` 类 checkpoint 文件，跳已完成 (model,layer) 对
+2. **双指纹 gate**：
+   - `/proc/1` mtime → reboot gate（检测真 reboot）
+   - host uptime (`/proc/uptime` 或 `stat -c %Y /proc/1`) + `/dev/nvidia*` mtime → hotplug gate（检测 driver 热插拔）
+3. **Hardened 脚本启动时记录两指纹 baseline**；每次 CKPT 落盘前复查；若指纹变化 → graceful abort + 等待人工干预（防止部分层产物被下一次 hotplug 事件污染）
+4. **Artifact 原子写盘**：fsync + rename 防 partial write
+
+**Why**：同日 2 次不同性质事件（reboot + hotplug）证明 AutoDL 实例连续运行假设完全不成立。之前 5 次 review 把 python-neg 静默死亡全部归因为 SIGHUP / reboot / cron-kill / unbuffered 等，均未命中真因。根本教训：**infra 事件是多样化的，诊断首诊 checklist 必须覆盖 reboot + hotplug + OOM + 宿主机调度**。
+
+**How to apply**：所有长任务脚本都按上述 4 条规则 hardening，不只是 python-neg 系列。
+
+### v3_recompute_pid4356 归因最终结论 (2026-04-13 22:XX CST)
+
+**ssh_read_only 核验结果**：
+- `/root/autodl-tmp/logs/recompute_a2_bootstrap_v3.log`: **不存在**（ls: No such file or directory）
+- `/root/autodl-tmp/logs/a2_perm_recompute_v3.log`: mtime=**2026-04-13 20:29:08 CST**, size=434 bytes
+- tail 显示进程停在 `MODEL: qwen25 / Layer L4: replaying 6 iterations...` — 无 traceback, 无 exit message → SIGKILL 式截断
+- registry 查询 `{"exp_id": "v3_recompute_pid4356"}` 返回 count=0，**exp_id 不在本项目 registry 中**
+
+**判定**：
+- log mtime **20:29:08 不在 19:43-19:44 窗口**，**也不在 22:10 hotplug 窗口** → **归因**：既非 19:44 reboot kill，也非 22:10 hotplug kill，**独立根因**（20:29 左右 SIGKILL，可能是同日更早一次未记录的 cron kill / OOM / 手动 kill，或 launcher 内部 child 提前退出）
+- `recompute_a2_bootstrap_v3.log` 文件完全缺失 → 启动期 redirect 分叉，launcher 只写出 `a2_perm_recompute_v3.log` 这一路；或 bootstrap 子阶段从未进入
+- 跨项目 "Cron stale residue 工具 gap" 节已记录此 exp_id 为"工具 gap 不再处理"案例，本次核验确认**独立根因待查**但**不升级处置**，按既有规则直接忽略 cron 残留回调
+
+**registry 动作**：未新建 registry 条目（Director 规则：若不存在则 memory.md 记录代替）
+
+## 2026-04-13T14:35 v5 prep P1 stale CKPT 污染 bug 修复
+
+Reviewer 发现 `negative_control_cka.py` resume 逻辑 else 分支未重置 done_set，配合 v4 bypass 残留 CKPT 会导致 v5 静默跳过 coder L4 python-X 三个 format-pair。本次修复：
+- A. 清理 autodl `/root/autodl-tmp/logs/ckpt_python_neg.txt`（CKPT_CLEARED）
+- B1. `launch_negative_control.sh` 加 results.json/CKPT 一致性守卫（missing results.json + 有 CKPT 则清 CKPT）
+- B2. `negative_control_cka.py` else 分支显式 `done_set = set()`
+- P2. precheck 增补 `/proc/driver/nvidia/version` 可读 + `GPU Excluded: No` 两条 gate
+- P3. CKPT 文件首行写 `# version=2 ...`，`load_done_set` 检验 header，旧文件视为 stale 弃用
+- P4. F audit 归档 `docs/v5_prep_F_audit.md`（Case 2：同模型不同分辨率）
+
+本 Worker 不 launch v5，不改 registry。

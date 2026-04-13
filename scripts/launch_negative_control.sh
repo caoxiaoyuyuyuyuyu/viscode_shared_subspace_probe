@@ -47,8 +47,24 @@ trap 'echo "[TRAP] killed pid=$$ sig=INT at $(date -Iseconds)" >> "$LOG"' INT
   fi
   UPTIME_TS=$(stat -c %Y /proc/1 2>/dev/null || echo 0)
   echo "[launch] instance_uptime_ts=$UPTIME_TS (/proc/1 mtime)"
+  if [ ! -r /proc/driver/nvidia/version ]; then
+      echo "[precheck] FAIL: no /proc/driver/nvidia/version" >&2
+      exit 93
+  fi
+  if ! grep -q "GPU Excluded: No" /proc/driver/nvidia/gpus/*/information 2>/dev/null; then
+      echo "[precheck] FAIL: GPU excluded" >&2
+      exit 94
+  fi
   echo "[launch] precheck gates passed"
 } | tee -a "$LOG"
+
+# Consistency guard: results.json missing but stale CKPT present → clear CKPT
+RESULTS_JSON="/root/autodl-tmp/viscode_shared_subspace_probe/outputs/negative_control/negative_control_cka.json"
+CKPT_FILE="/root/autodl-tmp/logs/ckpt_python_neg.txt"
+if [ ! -f "$RESULTS_JSON" ] && [ -f "$CKPT_FILE" ]; then
+    echo "[launch] results.json missing but CKPT exists, clearing stale CKPT" | tee -a "$LOG"
+    rm -f "$CKPT_FILE"
+fi
 
 # Step 1: Prepare Python snippets
 echo "[launcher] === Step 1: Prepare Python snippets ===" | tee -a "$LOG"
