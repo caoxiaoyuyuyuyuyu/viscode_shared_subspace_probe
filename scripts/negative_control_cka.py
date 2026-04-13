@@ -6,7 +6,11 @@ import numpy as np
 np.seterr(over='raise', invalid='raise')
 import torch
 import time
+import traceback
+import sys
 from pathlib import Path
+
+CKPT_FILE = Path("/root/autodl-tmp/logs/ckpt_python_neg.txt")
 
 LAYERS = [4, 8, 12, 16, 20, 24, 28]
 MODELS = ["coder", "viscoder2", "qwen25"]
@@ -93,8 +97,15 @@ def main():
         ("python-X", python_pairs, "python_x"),
         ("visual-X", visual_pairs, "visual_x"),
     ]:
+        total = len(MODELS) * len(LAYERS)
         for model in MODELS:
             for li, layer in enumerate(LAYERS):
+                print(f"[CKPT] {pair_type} computing model={model} layer={layer}/{LAYERS[-1]} t={time.time()}", flush=True)
+                try:
+                    CKPT_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    CKPT_FILE.write_text(f"{pair_type} {model} L{layer}\n")
+                except Exception:
+                    pass
                 for f1, f2 in pairs:
                     X = data[model][f1][:, li, :]
                     Y = data[model][f2][:, li, :]
@@ -137,4 +148,10 @@ def main():
     print(f"\nSaved to {out_path} ({elapsed:.1f}s)")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException:
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.stderr.flush()
+        raise

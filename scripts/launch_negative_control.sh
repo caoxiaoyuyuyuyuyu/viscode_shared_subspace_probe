@@ -5,12 +5,36 @@ set -euo pipefail
 # 3 models × python × 252 samples × 7 layers, then CKA comparison
 
 cd /root/autodl-tmp/viscode_shared_subspace_probe
-PYTHON=/root/miniconda3/bin/python
+PYTHON="/root/miniconda3/bin/python -u"
 LOG_DIR=/root/autodl-tmp/logs
 mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/negative_control.log"
 
-echo "[launcher] start $(date -u +%FT%TZ) commit=$(git rev-parse --short HEAD)" | tee "$LOG"
+# Default to nohup self-detach so SSH session drop does not kill the job.
+# Set NEG_CTRL_FG=1 to run in foreground (for interactive debugging).
+if [[ "${NEG_CTRL_DETACHED:-0}" != "1" && "${NEG_CTRL_FG:-0}" != "1" ]]; then
+    export NEG_CTRL_DETACHED=1
+    nohup bash "$0" "$@" >> "$LOG" 2>&1 &
+    echo "PID=$!" >> "$LOG"
+    echo "[launcher] detached nohup PID=$! log=$LOG"
+    exit 0
+fi
+
+# Diagnosability trap: KILL cannot be trapped by POSIX, so we only catch TERM/HUP/INT.
+# OOM-killer sends SIGKILL → not trappable; silent death is expected in that case.
+trap 'echo "[TRAP] killed pid=$$ sig=TERM at $(date -Iseconds)" >> "$LOG"' TERM
+trap 'echo "[TRAP] killed pid=$$ sig=HUP at $(date -Iseconds)" >> "$LOG"' HUP
+trap 'echo "[TRAP] killed pid=$$ sig=INT at $(date -Iseconds)" >> "$LOG"' INT
+
+{
+  echo "[launcher] start $(date -Iseconds) commit=$(git rev-parse --short HEAD) pid=$$"
+  echo "[diag] ---- memory ----"
+  free -g || true
+  echo "[diag] ---- disk ----"
+  df -h /root/autodl-tmp || true
+  echo "[diag] ---- gpu ----"
+  nvidia-smi --query-gpu=index,memory.free,memory.total --format=csv || true
+} | tee -a "$LOG"
 
 # Step 1: Prepare Python snippets
 echo "[launcher] === Step 1: Prepare Python snippets ===" | tee -a "$LOG"
