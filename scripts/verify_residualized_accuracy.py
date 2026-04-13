@@ -21,6 +21,14 @@ Usage:
       --mode iterative \
       --n-perm 5000 --n-bootstrap 1000
 
+  # Random baseline (requires iterative results as reference):
+  python scripts/verify_residualized_accuracy.py \
+      --models coder \
+      --cache-dir /root/autodl-tmp/cache/hidden_states \
+      --mode random-baseline \
+      --iterative-ref-dir /path/to/iterative/output \
+      --n-repeats 50
+
   # Smoke test:
   python scripts/verify_residualized_accuracy.py \
       --models coder --cache-dir /tmp/smoke_hs --mode verify --smoke
@@ -448,18 +456,153 @@ def run_iterative(model, data, layers, n_triples, out_dir, n_perm, n_bootstrap,
     return all_layer_results
 
 
+# ── Random Baseline Mode ──────────────────────────────────────────
+def run_random_baseline(model, data, layers, n_triples, out_dir, hidden_dim,
+                        iterative_ref_dir=None, n_repeats=50):
+    """Random projection baseline: project out same number of random dims as iterative.
+
+    For each layer, sample random orthonormal directions matching the number of
+    dims removed by iterative residualization, project to orthogonal complement,
+    and compute CKA, variance_retained, format_accuracy. Repeat n_repeats times.
+    """
+    # Load iterative results to get dims_removed per layer
+    ref_dir = iterative_ref_dir or out_dir
+    ref_path = ref_dir / model / "iterative_residualization.json"
+    if not ref_path.exists():
+        print(f"  ERROR: iterative results not found at {ref_path}")
+        print(f"  Run --mode iterative first to generate reference dims_removed per layer.")
+        return None
+
+    with open(ref_path) as f:
+        iterative_results = json.load(f)
+
+    print(f"\n  === RANDOM BASELINE (n_repeats={n_repeats}) ===")
+    print(f"  Reference: {ref_path}")
+
+    rng = np.random.RandomState(SEED + 100)
+    all_layer_results = {}
+
+    for li, layer in enumerate(layers):
+        layer_key = str(layer)
+        if layer_key not in iterative_results:
+            print(f"  WARNING: Layer {layer} not in iterative results, skipping")
+            continue
+
+        n_dims = iterative_results[layer_key]["total_dims_removed"]
+        iter_cka = iterative_results[layer_key]["final_cka"]
+        iter_var = iterative_results[layer_key]["final_variance_retained"]
+        iter_acc = iterative_results[layer_key]["final_format_accuracy"]
+
+        print(f"\n  --- Layer L{layer}: projecting out {n_dims}/{hidden_dim} random dims "
+              f"({n_dims/hidden_dim:.1%}) × {n_repeats} repeats ---")
+
+        if n_dims == 0:
+            print(f"    Skipping (0 dims removed in iterative)")
+            continue
+
+        # Per-format data at this layer
+        fmt_data_orig = {fmt: data[fmt][:n_triples, li, :].copy() for fmt in FORMATS}
+
+        cka_samples = []
+        var_samples = []
+        acc_samples = []
+
+        orig_var = sum(np.var(fmt_data_orig[fmt]) for fmt in FORMATS)
+
+        for rep in range(n_repeats):
+            # Sample random orthonormal directions
+            # Generate random matrix and QR-decompose for orthonormal basis
+            R = rng.randn(hidden_dim, n_dims).astype(np.float32)
+            Q, _ = np.linalg.qr(R, mode="reduced")  # Q: (hidden_dim, n_dims) orthonormal
+
+            # Project out: H_res = H - H @ Q @ Q^T
+            fmt_data_rand = {}
+            for fmt in FORMATS:
+                HQ = fmt_data_orig[fmt] @ Q
+                fmt_data_rand[fmt] = fmt_data_orig[fmt] - HQ @ Q.T
+
+            # CKA
+            cka_mean, _ = compute_cka_from_data(fmt_data_rand, n_triples)
+            cka_samples.append(cka_mean)
+
+            # Variance retained
+            cur_var = sum(np.var(fmt_data_rand[fmt]) for fmt in FORMATS)
+            var_samples.append(cur_var / orig_var if orig_var > 0 else 0)
+
+            # Format accuracy
+            X = np.concatenate([fmt_data_rand[fmt] for fmt in FORMATS], axis=0)
+            y = np.concatenate([np.full(n_triples, i) for i in range(len(FORMATS))])
+            _, acc, _ = fit_classifier(X, y)
+            acc_samples.append(acc)
+
+            if (rep + 1) % 10 == 0:
+                print(f"    repeat {rep+1}/{n_repeats}")
+
+        cka_arr = np.array(cka_samples)
+        var_arr = np.array(var_samples)
+        acc_arr = np.array(acc_samples)
+
+        layer_result = {
+            "layer": layer,
+            "n_dims_projected": n_dims,
+            "dims_ratio": round(n_dims / hidden_dim, 4),
+            "n_repeats": n_repeats,
+            "random_cka_mean": round(float(np.mean(cka_arr)), 6),
+            "random_cka_std": round(float(np.std(cka_arr)), 6),
+            "random_var_retained_mean": round(float(np.mean(var_arr)), 4),
+            "random_var_retained_std": round(float(np.std(var_arr)), 4),
+            "random_accuracy_mean": round(float(np.mean(acc_arr)), 4),
+            "random_accuracy_std": round(float(np.std(acc_arr)), 4),
+            "iterative_cka": iter_cka,
+            "iterative_var_retained": iter_var,
+            "iterative_accuracy": iter_acc,
+            "theoretical_var_retained": round(1.0 - n_dims / hidden_dim, 4),
+        }
+        all_layer_results[layer] = layer_result
+
+        print(f"    Random:    CKA={np.mean(cka_arr):.4f}±{np.std(cka_arr):.4f}, "
+              f"var_ret={np.mean(var_arr):.4f}±{np.std(var_arr):.4f}, "
+              f"acc={np.mean(acc_arr):.4f}±{np.std(acc_arr):.4f}")
+        print(f"    Iterative: CKA={iter_cka:.4f}, var_ret={iter_var:.4f}, acc={iter_acc:.4f}")
+        print(f"    Theoret:   var_ret={1.0 - n_dims/hidden_dim:.4f}")
+
+    _save_json(out_dir / model / "random_baseline.json", all_layer_results)
+
+    # Summary table
+    print(f"\n  {'='*90}")
+    print(f"  RANDOM BASELINE vs ITERATIVE SUMMARY: {model}")
+    print(f"  {'='*90}")
+    print(f"  {'Layer':<7} {'Dims':>5} {'Dim%':>6} | {'RandCKA':>10} {'IterCKA':>10} | "
+          f"{'RandVar':>10} {'IterVar':>10} {'TheoVar':>10} | {'RandAcc':>10} {'IterAcc':>10}")
+    print(f"  {'-'*88}")
+    for layer, r in all_layer_results.items():
+        dim_pct = r['dims_ratio'] * 100
+        print(f"  L{layer:<5} {r['n_dims_projected']:>5} {dim_pct:>5.1f}% | "
+              f"{r['random_cka_mean']:>10.4f} {r['iterative_cka']:>10.4f} | "
+              f"{r['random_var_retained_mean']:>10.4f} {r['iterative_var_retained']:>10.4f} "
+              f"{r['theoretical_var_retained']:>10.4f} | "
+              f"{r['random_accuracy_mean']:>10.4f} {r['iterative_accuracy']:>10.4f}")
+
+    return all_layer_results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Verify/Iterative Residualized CKA")
     parser.add_argument("--models", nargs="+", required=True)
     parser.add_argument("--cache-dir", type=str,
                         default="/root/autodl-tmp/cache/hidden_states")
     parser.add_argument("--out-dir", type=str, default=None)
-    parser.add_argument("--mode", choices=["verify", "iterative"], default="verify")
+    parser.add_argument("--mode", choices=["verify", "iterative", "random-baseline"],
+                        default="verify")
     parser.add_argument("--n-perm", type=int, default=5000)
     parser.add_argument("--n-bootstrap", type=int, default=1000)
     parser.add_argument("--n-triples", type=int, default=None)
     parser.add_argument("--acc-threshold", type=float, default=0.40,
                         help="Stop iterating when format accuracy drops below this")
+    parser.add_argument("--n-repeats", type=int, default=50,
+                        help="Number of random repeats for random-baseline mode")
+    parser.add_argument("--iterative-ref-dir", type=str, default=None,
+                        help="Directory with iterative results for random-baseline reference")
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
 
@@ -473,6 +616,7 @@ def main():
         args.n_perm = 50
         args.n_bootstrap = 10
         args.n_triples = args.n_triples or 12
+        args.n_repeats = min(args.n_repeats, 5)
 
     print(f"Mode: {args.mode}")
     print(f"Models: {args.models}")
@@ -493,6 +637,12 @@ def main():
                           n_perm=args.n_perm, n_bootstrap=args.n_bootstrap,
                           acc_threshold=args.acc_threshold,
                           hidden_dim=hidden_dim)
+        elif args.mode == "random-baseline":
+            ref_dir = Path(args.iterative_ref_dir) if args.iterative_ref_dir else None
+            run_random_baseline(model, data, layers, n_triples, out_dir,
+                                hidden_dim=hidden_dim,
+                                iterative_ref_dir=ref_dir,
+                                n_repeats=args.n_repeats)
 
         del data
         gc.collect()
