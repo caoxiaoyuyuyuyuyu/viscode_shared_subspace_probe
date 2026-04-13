@@ -586,14 +586,152 @@ def run_random_baseline(model, data, layers, n_triples, out_dir, hidden_dim,
     return all_layer_results
 
 
+# ── PCA Baseline Mode ─────────────────────────────────────────────
+def run_pca_baseline(model, data, layers, n_triples, out_dir, hidden_dim,
+                     iterative_ref_dir=None):
+    """PCA variance-matched baseline: project out top-k PCs to match iterative var_retained.
+
+    For each layer, find the number of top principal components whose removal
+    produces approximately the same variance_retained as iterative residualization.
+    Then compute CKA and format_accuracy on this PCA-residualized data.
+
+    This controls for variance amount (not dimension count), complementing the
+    random baseline which controls for dimension count (not variance amount).
+    """
+    ref_dir = iterative_ref_dir or out_dir
+    ref_path = ref_dir / model / "iterative_residualization.json"
+    if not ref_path.exists():
+        print(f"  ERROR: iterative results not found at {ref_path}")
+        return None
+
+    with open(ref_path) as f:
+        iterative_results = json.load(f)
+
+    print(f"\n  === PCA VARIANCE-MATCHED BASELINE ===")
+    print(f"  Reference: {ref_path}")
+
+    all_layer_results = {}
+
+    for li, layer in enumerate(layers):
+        layer_key = str(layer)
+        if layer_key not in iterative_results:
+            print(f"  WARNING: Layer {layer} not in iterative results, skipping")
+            continue
+
+        iter_var_ret = iterative_results[layer_key]["final_variance_retained"]
+        iter_cka = iterative_results[layer_key]["final_cka"]
+        iter_acc = iterative_results[layer_key]["final_format_accuracy"]
+        iter_dims = iterative_results[layer_key]["total_dims_removed"]
+
+        print(f"\n  --- Layer L{layer}: target var_retained ≈ {iter_var_ret:.4f} ---")
+
+        # Per-format data at this layer
+        fmt_data_orig = {fmt: data[fmt][:n_triples, li, :].copy() for fmt in FORMATS}
+        orig_var = sum(np.var(fmt_data_orig[fmt]) for fmt in FORMATS)
+
+        # Compute PCA on concatenated data
+        X_all = np.concatenate([fmt_data_orig[fmt] for fmt in FORMATS], axis=0)
+        X_mean = X_all.mean(axis=0, keepdims=True)
+        X_centered = X_all - X_mean
+
+        # SVD for PCA
+        _, S, Vt = np.linalg.svd(X_centered, full_matrices=False)
+        explained_var = S ** 2 / X_centered.shape[0]
+        total_var = float(np.sum(explained_var))
+        cumvar = np.cumsum(explained_var) / total_var
+
+        # Find k such that removing top-k PCs gives var_retained ≈ iter_var_ret
+        # Removing top-k means retaining 1 - cumvar[k-1] fraction
+        target_retain = iter_var_ret
+        k_match = 1
+        for k in range(1, len(cumvar)):
+            if (1.0 - cumvar[k - 1]) <= target_retain:
+                k_match = k
+                break
+        else:
+            k_match = len(cumvar)
+
+        # Also check k_match-1 for closer match
+        if k_match > 1:
+            var_ret_k = 1.0 - cumvar[k_match - 1]
+            var_ret_km1 = 1.0 - cumvar[k_match - 2]
+            if abs(var_ret_km1 - target_retain) < abs(var_ret_k - target_retain):
+                k_match = k_match - 1
+
+        actual_var_retained_pca = 1.0 - cumvar[k_match - 1]
+
+        print(f"    PCA: removing top-{k_match} PCs → var_retained={actual_var_retained_pca:.4f} "
+              f"(target={target_retain:.4f}, iterative dims={iter_dims})")
+
+        # Project out top-k PCs
+        # Top-k PC directions are rows of Vt[:k_match]
+        Q_pca = Vt[:k_match].T  # (hidden_dim, k_match)
+
+        fmt_data_pca = {}
+        for fmt in FORMATS:
+            centered = fmt_data_orig[fmt] - X_mean
+            HQ = centered @ Q_pca
+            fmt_data_pca[fmt] = centered - HQ @ Q_pca.T + X_mean  # add mean back
+
+        # Verify actual variance retained
+        pca_var = sum(np.var(fmt_data_pca[fmt]) for fmt in FORMATS)
+        actual_var_check = pca_var / orig_var if orig_var > 0 else 0
+
+        # CKA
+        cka_mean, cka_per_pair = compute_cka_from_data(fmt_data_pca, n_triples)
+
+        # Format accuracy
+        X_pca = np.concatenate([fmt_data_pca[fmt] for fmt in FORMATS], axis=0)
+        y = np.concatenate([np.full(n_triples, i) for i in range(len(FORMATS))])
+        _, pca_acc, pca_acc_std = fit_classifier(X_pca, y)
+
+        layer_result = {
+            "layer": layer,
+            "n_pcs_removed": k_match,
+            "pca_var_retained": round(float(actual_var_check), 4),
+            "pca_cka": round(cka_mean, 6),
+            "pca_cka_per_pair": {f"{f1}-{f2}": round(v, 6)
+                                 for (f1, f2), v in zip(FORMAT_PAIRS, cka_per_pair)},
+            "pca_accuracy": round(pca_acc, 4),
+            "pca_accuracy_std": round(pca_acc_std, 4),
+            "iterative_dims_removed": iter_dims,
+            "iterative_var_retained": iter_var_ret,
+            "iterative_cka": iter_cka,
+            "iterative_accuracy": iter_acc,
+        }
+        all_layer_results[layer] = layer_result
+
+        print(f"    PCA:       CKA={cka_mean:.4f}, var_ret={actual_var_check:.4f}, "
+              f"acc={pca_acc:.4f}, k={k_match}")
+        print(f"    Iterative: CKA={iter_cka:.4f}, var_ret={iter_var_ret:.4f}, "
+              f"acc={iter_acc:.4f}, dims={iter_dims}")
+
+    _save_json(out_dir / model / "pca_baseline.json", all_layer_results)
+
+    # Summary table
+    print(f"\n  {'='*95}")
+    print(f"  PCA BASELINE vs ITERATIVE SUMMARY: {model}")
+    print(f"  {'='*95}")
+    print(f"  {'Layer':<7} {'PCA_k':>6} {'IterDim':>8} | {'PCA_CKA':>9} {'IterCKA':>9} | "
+          f"{'PCA_Var':>9} {'IterVar':>9} | {'PCA_Acc':>9} {'IterAcc':>9}")
+    print(f"  {'-'*85}")
+    for layer, r in all_layer_results.items():
+        print(f"  L{layer:<5} {r['n_pcs_removed']:>6} {r['iterative_dims_removed']:>8} | "
+              f"{r['pca_cka']:>9.4f} {r['iterative_cka']:>9.4f} | "
+              f"{r['pca_var_retained']:>9.4f} {r['iterative_var_retained']:>9.4f} | "
+              f"{r['pca_accuracy']:>9.4f} {r['iterative_accuracy']:>9.4f}")
+
+    return all_layer_results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Verify/Iterative Residualized CKA")
     parser.add_argument("--models", nargs="+", required=True)
     parser.add_argument("--cache-dir", type=str,
                         default="/root/autodl-tmp/cache/hidden_states")
     parser.add_argument("--out-dir", type=str, default=None)
-    parser.add_argument("--mode", choices=["verify", "iterative", "random-baseline"],
-                        default="verify")
+    parser.add_argument("--mode", choices=["verify", "iterative", "random-baseline",
+                                          "pca-baseline"], default="verify")
     parser.add_argument("--n-perm", type=int, default=5000)
     parser.add_argument("--n-bootstrap", type=int, default=1000)
     parser.add_argument("--n-triples", type=int, default=None)
@@ -643,6 +781,11 @@ def main():
                                 hidden_dim=hidden_dim,
                                 iterative_ref_dir=ref_dir,
                                 n_repeats=args.n_repeats)
+        elif args.mode == "pca-baseline":
+            ref_dir = Path(args.iterative_ref_dir) if args.iterative_ref_dir else None
+            run_pca_baseline(model, data, layers, n_triples, out_dir,
+                             hidden_dim=hidden_dim,
+                             iterative_ref_dir=ref_dir)
 
         del data
         gc.collect()
