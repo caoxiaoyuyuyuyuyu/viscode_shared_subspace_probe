@@ -51,8 +51,9 @@ trap 'echo "[TRAP] killed pid=$$ sig=INT at $(date -Iseconds)" >> "$LOG"' INT
       echo "[precheck] FAIL: no /proc/driver/nvidia/version" >&2
       exit 93
   fi
-  if ! grep -q "GPU Excluded: No" /proc/driver/nvidia/gpus/*/information 2>/dev/null; then
-      echo "[precheck] FAIL: GPU excluded" >&2
+  if ! grep -qE "GPU Excluded:[[:space:]]+No" /proc/driver/nvidia/gpus/*/information 2>/dev/null; then
+      echo "[precheck] FAIL: GPU excluded (pattern not matched in /proc/driver/nvidia/gpus/*/information)" >&2
+      head -1 /proc/driver/nvidia/gpus/*/information 2>/dev/null | head -5 >&2 || true
       exit 94
   fi
   echo "[launch] precheck gates passed"
