@@ -104,14 +104,19 @@ def fit_classifier(X, y):
 def project_out(H, W):
     """Project H to orthogonal complement of row space of W.
 
-    Uses QR decomposition for numerical stability (avoids inv of near-singular
-    WWT after many iterations of residualization).
+    Uses SVD with rank thresholding to handle rank-deficient W correctly.
+    For 3-class multinomial LR, coef_ is (3, d) but rank=2 due to the
+    sum-to-zero constraint. QR on W.T would return 3 columns (over-projecting),
+    while inv(W@W.T) fails on the singular matrix. SVD correctly identifies
+    and projects out only the actual row space.
     """
-    # QR on W^T gives orthonormal basis Q for column space of W^T = row space of W
-    Q, _ = np.linalg.qr(W.T, mode="reduced")  # Q: (d, k) orthonormal
-    # Project out: H_res = H - H @ Q @ Q^T
-    HQ = H @ Q          # (n, k)
-    return H - HQ @ Q.T  # (n, d)
+    U, S, Vt = np.linalg.svd(W, full_matrices=False)
+    # Keep only directions with significant singular values
+    tol = S[0] * 1e-6
+    mask = S > tol
+    V = Vt[mask]  # (rank, d) — orthonormal basis for row space of W
+    # Project out: H_res = H - H @ V^T @ V
+    return H - H @ V.T @ V
 
 
 # ── CKA functions ──────────────────────────────────────────────────
