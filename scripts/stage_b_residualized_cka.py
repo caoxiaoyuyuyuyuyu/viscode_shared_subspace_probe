@@ -134,11 +134,15 @@ def project_out_format_subspace(H, W):
     # Projection matrix P = W^T @ (W @ W^T)^{-1} @ W: (hidden_dim, hidden_dim)
     # H_residual = H - H @ P = H @ (I - P)
 
-    WWT = W @ W.T  # (k, k)
-    WWT_inv = np.linalg.inv(WWT)  # (k, k)
-    P = W.T @ WWT_inv @ W  # (hidden_dim, hidden_dim) — format projection matrix
-
-    H_residual = H - H @ P
+    # SVD with rank thresholding (handles rank-deficient W, e.g., 3-class multinomial LR)
+    U, s, Vt = np.linalg.svd(W, full_matrices=False)
+    if s.size == 0:
+        return H.copy()
+    rank = int(np.sum(s > 1e-10 * s.max()))
+    if rank == 0:
+        return H.copy()
+    V_r = Vt[:rank]  # (rank, hidden_dim)
+    H_residual = H - (H @ V_r.T) @ V_r
     return H_residual
 
 
@@ -186,9 +190,11 @@ def run_residualized_bootstrap(res_grams, n_triples, n_bootstrap, frac=0.8):
             KY = res_grams[f2][np.ix_(idx, idx)]
             KX_c = H @ KX @ H
             KY_c = H @ KY @ H
-            hsic_xy = np.sum(KX_c * KY_c)
-            hsic_xx = np.sum(KX_c * KX_c)
-            hsic_yy = np.sum(KY_c * KY_c)
+            KX64 = KX_c.astype(np.float64, copy=False)
+            KY64 = KY_c.astype(np.float64, copy=False)
+            hsic_xy = np.float64(np.sum(KX64 * KY64))
+            hsic_xx = np.float64(np.sum(KX64 * KX64))
+            hsic_yy = np.float64(np.sum(KY64 * KY64))
             denom = np.sqrt(hsic_xx * hsic_yy)
             pair_ckas.append(hsic_xy / denom if denom > 1e-12 else 0.0)
         boot_means[b] = np.mean(pair_ckas)
@@ -235,9 +241,11 @@ def run_residualized_a2_perm(data, W, layer_idx, n_triples, n_perm):
             KY = f2_perm @ f2_perm.T
             KX_c = H_center @ KX @ H_center
             KY_c = H_center @ KY @ H_center
-            hsic_xy = np.sum(KX_c * KY_c)
-            hsic_xx = np.sum(KX_c * KX_c)
-            hsic_yy = np.sum(KY_c * KY_c)
+            KX64 = KX_c.astype(np.float64, copy=False)
+            KY64 = KY_c.astype(np.float64, copy=False)
+            hsic_xy = np.float64(np.sum(KX64 * KY64))
+            hsic_xx = np.float64(np.sum(KX64 * KX64))
+            hsic_yy = np.float64(np.sum(KY64 * KY64))
             denom = np.sqrt(hsic_xx * hsic_yy)
             null_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
         null_means[p_idx] = np.mean(null_vals)
@@ -290,7 +298,7 @@ def run_residualized_a2_perm_aggregate(data, format_weights, layers, n_triples, 
             K = all_res_data[li][fmt] @ all_res_data[li][fmt].T
             Kc = H_center @ K @ H_center
             obs_grams_centered[li][fmt] = Kc
-            obs_hsic_xx[li][fmt] = float(np.sum(Kc ** 2))
+            obs_hsic_xx[li][fmt] = float(np.sum(Kc.astype(np.float64) ** 2))
 
     # Null
     null_means = np.empty(n_perm, dtype=np.float32)
@@ -303,8 +311,10 @@ def run_residualized_a2_perm_aggregate(data, format_weights, layers, n_triples, 
                 f2_perm = all_res_data[li][f2][perm, :]
                 KY = f2_perm @ f2_perm.T
                 KY_c = H_center @ KY @ H_center
-                hsic_xy = np.sum(KX_c * KY_c)
-                hsic_yy = np.sum(KY_c * KY_c)
+                KX64 = KX_c.astype(np.float64, copy=False)
+                KY64 = KY_c.astype(np.float64, copy=False)
+                hsic_xy = np.float64(np.sum(KX64 * KY64))
+                hsic_yy = np.float64(np.sum(KY64 * KY64))
                 denom = np.sqrt(obs_hsic_xx[li][f1] * hsic_yy)
                 null_vals.append(hsic_xy / denom if denom > 1e-12 else 0.0)
         null_means[p_idx] = np.mean(null_vals)

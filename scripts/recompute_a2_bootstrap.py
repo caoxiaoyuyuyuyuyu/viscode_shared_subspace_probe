@@ -289,7 +289,7 @@ def main():
         for li in range(len(layers)):
             all_grams[li] = {fmt: all_fmt_data[li][fmt] @ all_fmt_data[li][fmt].T for fmt in FORMATS}
             all_centered[li] = {fmt: H_center @ all_grams[li][fmt] @ H_center for fmt in FORMATS}
-            all_hsic_xx[li] = {fmt: float(np.sum(all_centered[li][fmt] ** 2)) for fmt in FORMATS}
+            all_hsic_xx[li] = {fmt: float(np.sum(all_centered[li][fmt].astype(np.float64) ** 2)) for fmt in FORMATS}
             for f1, f2 in FORMAT_PAIRS:
                 obs_vals.append(_cka_from_centered(all_centered[li][f1], all_centered[li][f2]))
         obs_mean = float(np.mean(obs_vals))
