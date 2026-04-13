@@ -34,6 +34,20 @@ trap 'echo "[TRAP] killed pid=$$ sig=INT at $(date -Iseconds)" >> "$LOG"' INT
   df -h /root/autodl-tmp || true
   echo "[diag] ---- gpu ----"
   nvidia-smi --query-gpu=index,memory.free,memory.total --format=csv || true
+  echo "[diag] ---- precheck gates ----"
+  for dev in /dev/nvidia0 /dev/nvidiactl /dev/nvidia-uvm; do
+      if [ ! -e "$dev" ]; then
+          echo "[PRECHECK FAIL] $dev missing" >&2
+          exit 91
+      fi
+  done
+  if [ ! -s /usr/bin/nvidia-smi ]; then
+      echo "[PRECHECK FAIL] /usr/bin/nvidia-smi is empty/missing" >&2
+      exit 92
+  fi
+  UPTIME_TS=$(stat -c %Y /proc/1 2>/dev/null || echo 0)
+  echo "[launch] instance_uptime_ts=$UPTIME_TS (/proc/1 mtime)"
+  echo "[launch] precheck gates passed"
 } | tee -a "$LOG"
 
 # Step 1: Prepare Python snippets

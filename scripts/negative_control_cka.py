@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Negative Control CKA Analysis: Compare Python-X vs Visual cross-format CKA."""
 import json
+import os
 import numpy as np
 
 np.seterr(over='raise', invalid='raise')
@@ -11,6 +12,50 @@ import sys
 from pathlib import Path
 
 CKPT_FILE = Path("/root/autodl-tmp/logs/ckpt_python_neg.txt")
+
+
+def atomic_write_json(path: Path, obj):
+    """Atomic JSON write: tmp file + fsync + rename."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def append_ckpt_line(line: str):
+    """Append a line to CKPT_FILE with fsync."""
+    CKPT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(CKPT_FILE, "a") as f:
+        f.write(line + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def load_done_set():
+    """Parse CKPT_FILE → set of (pair_type, model, layer) triples already done."""
+    done = set()
+    if not CKPT_FILE.exists():
+        return done
+    for raw in CKPT_FILE.read_text().splitlines():
+        raw = raw.strip()
+        if not raw or raw.startswith("#"):
+            continue
+        # Format: "python-X {model} L{layer} t={ts}"
+        parts = raw.split()
+        if len(parts) < 3:
+            continue
+        pair_type, model, layer_tok = parts[0], parts[1], parts[2]
+        if not layer_tok.startswith("L"):
+            continue
+        try:
+            layer = int(layer_tok[1:])
+        except ValueError:
+            continue
+        done.add((pair_type, model, layer))
+    return done
 
 LAYERS = [4, 8, 12, 16, 20, 24, 28]
 MODELS = ["coder", "viscoder2", "qwen25"]
@@ -90,7 +135,23 @@ def main():
     python_pairs = [("python", "svg"), ("python", "tikz"), ("python", "asy")]
     visual_pairs = [("svg", "tikz"), ("svg", "asy"), ("tikz", "asy")]
 
-    results = {"python_x": [], "visual_x": [], "summary": {}}
+    # Resume support: load partial results + done-set
+    out_path = OUT_DIR / "negative_control_cka.json"
+    done_set = load_done_set()
+    if out_path.exists() and done_set:
+        try:
+            results = json.loads(out_path.read_text())
+            # Ensure keys exist
+            results.setdefault("python_x", [])
+            results.setdefault("visual_x", [])
+            results.setdefault("summary", {})
+            print(f"[RESUME] loaded partial results: py_x={len(results['python_x'])} vis_x={len(results['visual_x'])} done_set={len(done_set)}")
+        except Exception as e:
+            print(f"[RESUME] failed to load partial results ({e}); starting fresh")
+            results = {"python_x": [], "visual_x": [], "summary": {}}
+            done_set = set()
+    else:
+        results = {"python_x": [], "visual_x": [], "summary": {}}
 
     # Compute CKA for all pairs at all layers
     for pair_type, pairs, result_key in [
@@ -100,12 +161,11 @@ def main():
         total = len(MODELS) * len(LAYERS)
         for model in MODELS:
             for li, layer in enumerate(LAYERS):
-                print(f"[CKPT] {pair_type} computing model={model} layer={layer}/{LAYERS[-1]} t={time.time()}", flush=True)
-                try:
-                    CKPT_FILE.parent.mkdir(parents=True, exist_ok=True)
-                    CKPT_FILE.write_text(f"{pair_type} {model} L{layer}\n")
-                except Exception:
-                    pass
+                if (pair_type, model, layer) in done_set:
+                    print(f"[RESUME] skip pair_type={pair_type} model={model} layer={layer}", flush=True)
+                    continue
+                # Display: layer={actual_idx}(li={li}/{len(LAYERS)-1}, max_L={LAYERS[-1]})
+                print(f"[CKPT] {pair_type} computing model={model} layer_idx={layer} li={li}/{len(LAYERS)-1} t={time.time()}", flush=True)
                 for f1, f2 in pairs:
                     X = data[model][f1][:, li, :]
                     Y = data[model][f2][:, li, :]
@@ -126,6 +186,14 @@ def main():
                     results[result_key].append(row)
                     print(f"  [{pair_type}] {model} L{layer} {f1}-{f2}: CKA={obs:.4f} p={p_val:.4f} null={null_mean:.4f}+-{null_std:.4f} CI=[{ci_lo:.4f},{ci_hi:.4f}]")
 
+                # Atomic checkpoint: rewrite partial results JSON + append CKPT line
+                try:
+                    atomic_write_json(out_path, results)
+                    append_ckpt_line(f"{pair_type} {model} L{layer} t={time.time()}")
+                    done_set.add((pair_type, model, layer))
+                except Exception as e:
+                    print(f"[CKPT] atomic write failed: {e}", flush=True)
+
     # Summary: mean CKA at L28 for python-X vs visual-X
     for model in MODELS:
         py_l28 = [r["cka"] for r in results["python_x"] if r["model"] == model and r["layer"] == 28]
@@ -142,9 +210,7 @@ def main():
     results["n_perm"] = N_PERM
     results["n_triples"] = N_TRIPLES
 
-    out_path = OUT_DIR / "negative_control_cka.json"
-    with open(out_path, "w") as f:
-        json.dump(results, f, indent=2)
+    atomic_write_json(out_path, results)
     print(f"\nSaved to {out_path} ({elapsed:.1f}s)")
 
 if __name__ == "__main__":
