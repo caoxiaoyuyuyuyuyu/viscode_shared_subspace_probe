@@ -92,7 +92,11 @@ def append_ckpt(line: str):
 
 
 def load_extract_done():
-    """Return set of (fmt, sample_idx) already extracted."""
+    """Return set of (fmt, sample_idx) already extracted.
+
+    Only marks (fmt, idx) as done if the .pt file actually exists on disk,
+    so clearing the cache dir forces re-extraction even with stale checkpoint.
+    """
     done = set()
     if not CKPT_FILE.exists():
         return done
@@ -107,7 +111,11 @@ def load_extract_done():
         if len(parts) >= 2:
             fmt, idx_str = parts[0], parts[1]
             try:
-                done.add((fmt, int(idx_str)))
+                idx = int(idx_str)
+                # Only count as done if the .pt file actually exists
+                pt_path = CACHE_DIR / fmt / f"{idx}.pt"
+                if pt_path.exists():
+                    done.add((fmt, idx))
             except ValueError:
                 continue
     return done
