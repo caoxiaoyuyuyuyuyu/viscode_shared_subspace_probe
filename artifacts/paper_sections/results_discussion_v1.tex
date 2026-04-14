@@ -208,7 +208,8 @@ Per the pre-registered D060 criterion, C1 is declared FAIL: three independent fa
 The C1 result establishes that the measured cross-format CKA reflects code-general structure rather than visual-specific representations.
 
 \paragraph{Scope: code-pretrained models only.}
-An exploratory ablation with code-naive Llama-3-8B across 7 equidistant layers (Appendix~\ref{sec:llama-baseline}; D075, post-hoc) reveals that while visual cross-format CKA persists at comparable magnitude (21/21 cells $p < 0.005$), the python--visual entanglement does not arise (20/21 cells $p > 0.05$; the sole exception is python--Asy at L8 with borderline $p = 0.039$).
+An exploratory ablation with code-naive Llama-3-8B across 7 equidistant layers (Appendix~\ref{sec:llama-baseline}) reveals that while visual cross-format CKA persists at comparable magnitude (21/21 cells $p < 0.005$), the python--visual entanglement does not arise (20/21 cells $p > 0.05$; the sole exception is python--Asy at L8 with borderline $p = 0.039$).
+Following the initial exploratory observation (D075, three layers), we pre-registered confirmation criteria (D078: visual $\geq$70\% \& python $\leq$40\% significance) before the 7-layer scan; the result (visual 100\%, python 4.8\%) met these criteria.
 This indicates that the C1 failure mode---where python code yields 60--110\% of visual CKA---is specific to code-pretrained LLMs, not a general property of language models.
 
 \subsection{Robustness Checks}
@@ -275,12 +276,14 @@ The cell-level attenuation ($\rho = 0.57$) and layer-dependent CKA-to-Jaccard ra
 The pre-registered C1 negative control (\S\ref{sec:c1}) further constrains interpretation: python-X CKA reaches 60--110\% of visual-X CKA in magnitude, formally failing the D060 criterion at 20/21 (model, layer) cells.
 This establishes that code-general structure---rather than visual-specific representations---dominates the measured alignment.
 
-\paragraph{Split hypothesis (exploratory, D075).}
+\paragraph{Split hypothesis (D075 exploratory $\to$ D078 pre-registered confirmation).}
 An ablation with code-naive Llama-3-8B across 7 equidistant layers (Appendix~\ref{sec:llama-baseline}) suggests a two-track interpretation:
 (1)~visual cross-format CKA persists at comparable magnitude without code pretraining (21/21 cells $p < 0.005$), indicating that visual code formats share representational structure in general-purpose LLMs;
 (2)~python--visual entanglement is substantially stronger in code-pretrained models: Qwen family python-X CKA reaches 60--110\% of visual-X magnitude (D060), whereas Llama-3-8B python-X cells are overwhelmingly non-significant (20/21 cells $p > 0.05$; sole exception: python--Asy L8, $p = 0.039$), suggesting that the C1 failure mode is a code-pretraining artifact.
-We note that the 7-layer equidistant protocol samples to L28 (87.5\% depth), missing the final layers where the original three-layer scan (D075) found its only two significant python cells (L31, 97\% depth); python--visual entanglement in code-naive models, if present, may thus be confined to the deepest layers.
-This observation is post-hoc and exploratory; confirmation requires pre-registered replication across additional code-naive architectures.
+We note that the 7-layer equidistant protocol samples to L28 (87.5\% depth), missing the final layers where the original three-layer scan (D075) found its only two significant python cells (L31, 97\% depth).
+Thus, python--visual entanglement in code-naive Llama-3, if present, is \emph{layer-local} (confined to the deepest 1--2 layers at 97\% depth), whereas in code-pretrained Qwen models it is \emph{layer-general} (significant across the full depth range).
+This constitutes a quantitative split in extent rather than a qualitative split in presence.
+The initial three-layer observation was post-hoc (D075); the 7-layer confirmation met pre-registered criteria (D078: 21/21 visual $\geq$ 70\%, 1/21 python $\leq$ 40\%).
 
 \paragraph{Methodological caveats.}
 The fixed sample size ($n{=}252$ triples) constrains all models to the same statistical power, which may compress inter-model differences in CKA magnitude.

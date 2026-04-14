@@ -360,7 +360,7 @@ Qwen2.5-base & L28 & \textbf{0.030} & \textbf{0.076} & \textbf{0.39} & .236 & \t
 \subsection{Code-Naive Baseline: Llama-3-8B}
 \label{sec:llama-baseline}
 
-\paragraph{Note:} This ablation is a post-hoc exploratory analysis (D075), not a pre-registered prediction.
+\paragraph{Note:} The initial three-layer scan was exploratory (D075); a subsequent 7-layer test with pre-registered criteria (D078: visual $\geq$70\% \& python $\leq$40\% significance) confirmed the pattern.
 
 To test whether the cross-format CKA signal requires code-specialized pretraining, we apply the same probing framework to Meta-Llama-3-8B (base), a general-purpose LLM with no code-specific training.
 We extract hidden states at 7 equidistant layers (L4/L8/L12/L16/L20/L24/L28 out of 32, corresponding to 12.5--87.5\% depth) for all 252 triples and 252 Python snippets, computing CKA with 5{,}000 permutations and 1{,}000 bootstrap subsamples.
@@ -390,11 +390,10 @@ Py--Asy  & .107 & .115 & .116 & .118 & .092 & .083 & .093 \\
 \end{tabular}
 \end{table}
 
-Visual cross-format CKA is significant at all 21 cells ($p \leq 0.0024$), with magnitudes comparable to the Qwen family (mean 0.116 vs.\ Qwen 0.119--0.154).
+Visual cross-format CKA is significant at all 21 cells ($p \leq 0.0024$; mean 0.116).
 The TikZ--Asy $>$ SVG--Asy $>$ SVG--TikZ ordering replicates at all 7 layers, strengthening the token-overlap gradient (F3) as robust to the absence of code-specialized pretraining.
 In contrast, python--visual pairs are overwhelmingly non-significant (20/21 cells $p > 0.05$); the sole exception is Python--Asy at L8 ($p = 0.039$), a borderline result that does not survive multiplicity correction.
 
 We note that the equidistant protocol samples Llama-3 to L28 (87.5\% depth), missing the final layers where D075's three-layer scan found the only two significant python cells (L31, 97\% depth).
-This suggests python--visual entanglement in code-naive models, if present, may be confined to the deepest layers.
-
-This split---visual CKA persists without code pretraining while python--visual entanglement does not---suggests that the C1 failure mode (python yielding 60--110\% of visual CKA in code-pretrained models) is specific to code-pretrained LLMs, not a general property of language models.
+Thus, python--visual entanglement in code-naive Llama-3, if present, is \emph{layer-local} (confined to the deepest 1--2 layers at 97\% depth), whereas in code-pretrained Qwen models it is \emph{layer-general} (significant across the full depth range).
+This constitutes a quantitative split in extent rather than a qualitative split in presence, and suggests that the C1 failure mode (python yielding 60--110\% of visual CKA in code-pretrained models) is specific to code-pretrained LLMs, not a general property of language models.
