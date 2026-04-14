@@ -308,6 +308,52 @@ This is the same degeneracy that motivated our removal of raw CCA from the analy
 PWCCA corroborates the \emph{direction} of the CKA signal---observed values exceed the permutation null for all three models---but its observed/null ratio (1.13--1.15$\times$) is far below CKA's (${\sim}3\times$), limiting its value as an independent robustness check in this experimental design.
 
 %% ========================================================================
+%% C1 Negative Control: Python-X vs Visual-X Magnitude
+%% ========================================================================
+
+\subsection{C1 Negative Control: Python-X vs.\ Visual-X Magnitude}
+\label{sec:c1-magnitude}
+
+Table~\ref{tab:c1_python_magnitude} reports the per-cell comparison underlying the C1 pre-registered criterion (D060): mean python-X CKA must be $< 0.5\times$ mean visual-X CKA at each (model, layer) cell.
+The criterion fails at 20 of 21 cells; only Qwen2.5-base at L28 passes, driven by the sharp final-layer washout (F4) that depresses both signals.
+
+\begin{table}[!ht]
+\centering
+\small
+\caption{C1 negative control magnitude comparison. Python-X = mean CKA across (python--svg, python--tikz, python--asy); Visual-X = mean CKA across (svg--tikz, svg--asy, tikz--asy). Ratio = Python-X / Visual-X. M1 criterion requires Ratio $< 0.50$; \textbf{bold} = the sole passing cell.}
+\label{tab:c1_python_magnitude}
+\begin{tabular}{llcccc}
+\toprule
+Model & Layer & Py-X CKA & Vis-X CKA & Ratio & M1 \\
+\midrule
+Coder-7B & L4  & 0.093 & 0.087 & 1.06 & fail \\
+Coder-7B & L8  & 0.088 & 0.091 & 0.98 & fail \\
+Coder-7B & L12 & 0.092 & 0.121 & 0.76 & fail \\
+Coder-7B & L16 & 0.089 & 0.141 & 0.63 & fail \\
+Coder-7B & L20 & 0.084 & 0.128 & 0.65 & fail \\
+Coder-7B & L24 & 0.092 & 0.141 & 0.65 & fail \\
+Coder-7B & L28 & 0.102 & 0.149 & 0.69 & fail \\
+\midrule
+VisCoder2-7B & L4  & 0.093 & 0.088 & 1.05 & fail \\
+VisCoder2-7B & L8  & 0.091 & 0.095 & 0.97 & fail \\
+VisCoder2-7B & L12 & 0.099 & 0.132 & 0.75 & fail \\
+VisCoder2-7B & L16 & 0.096 & 0.143 & 0.67 & fail \\
+VisCoder2-7B & L20 & 0.086 & 0.130 & 0.66 & fail \\
+VisCoder2-7B & L24 & 0.087 & 0.145 & 0.60 & fail \\
+VisCoder2-7B & L28 & 0.091 & 0.137 & 0.66 & fail \\
+\midrule
+Qwen2.5-base & L4  & 0.094 & 0.085 & 1.11 & fail \\
+Qwen2.5-base & L8  & 0.087 & 0.089 & 0.98 & fail \\
+Qwen2.5-base & L12 & 0.088 & 0.112 & 0.78 & fail \\
+Qwen2.5-base & L16 & 0.079 & 0.115 & 0.68 & fail \\
+Qwen2.5-base & L20 & 0.071 & 0.109 & 0.65 & fail \\
+Qwen2.5-base & L24 & 0.075 & 0.121 & 0.62 & fail \\
+Qwen2.5-base & L28 & \textbf{0.030} & \textbf{0.076} & \textbf{0.39} & \textbf{pass} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ========================================================================
 %% Code-Naive Baseline: Llama-3-8B
 %% ========================================================================
 
