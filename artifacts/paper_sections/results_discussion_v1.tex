@@ -277,7 +277,7 @@ This establishes that code-general structure---rather than visual-specific repre
 
 \paragraph{Split hypothesis (exploratory, D075).}
 An ablation with code-naive Llama-3-8B across 7 equidistant layers (Appendix~\ref{sec:llama-baseline}) suggests a two-track interpretation:
-(1)~visual cross-format CKA persists at comparable magnitude without code pretraining (9/9 cells $p < 0.005$), indicating that visual code formats share representational structure in general-purpose LLMs;
+(1)~visual cross-format CKA persists at comparable magnitude without code pretraining (21/21 cells $p < 0.005$), indicating that visual code formats share representational structure in general-purpose LLMs;
 (2)~python--visual entanglement is substantially stronger in code-pretrained models: Qwen family python-X CKA reaches 60--110\% of visual-X magnitude (D060), whereas Llama-3-8B python-X cells are overwhelmingly non-significant (20/21 cells $p > 0.05$; sole exception: python--Asy L8, $p = 0.039$), suggesting that the C1 failure mode is a code-pretraining artifact.
 We note that the 7-layer equidistant protocol samples to L28 (87.5\% depth), missing the final layers where the original three-layer scan (D075) found its only two significant python cells (L31, 97\% depth); python--visual entanglement in code-naive models, if present, may thus be confined to the deepest layers.
 This observation is post-hoc and exploratory; confirmation requires pre-registered replication across additional code-naive architectures.
