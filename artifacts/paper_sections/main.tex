@@ -1,0 +1,105 @@
+% main.tex — ACL 2023 format
+% viscode_shared_subspace_probe
+% Compile: pdflatex main && bibtex main && pdflatex main && pdflatex main
+
+\documentclass[11pt]{article}
+
+% --- ACL 2023 style ---
+% If acl.sty is available, use it; otherwise fall back to a compatible setup.
+% Uncomment the appropriate line:
+\usepackage[review]{acl}    % anonymous submission mode
+% \usepackage{acl}           % camera-ready (de-anonymized)
+
+% Fix line numbers in two-column mode: put numbers on outer margin of each column.
+% acl.sty loads lineno with [switch] which alternates by page parity, not column.
+% Override \makeLineNumber after acl.sty's \AtBeginDocument{\linenumbers} fires.
+\makeatletter
+\AtBeginDocument{%
+  \def\makeLineNumber{%
+    \if@firstcolumn
+      \makeLineNumberLeft
+    \else
+      \makeLineNumberRight
+    \fi
+  }%
+}
+\makeatother
+\setlength{\linenumbersep}{5pt}
+
+% --- Core packages ---
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+% \usepackage{inconsolata}  % optional monospace font
+
+% --- Math & tables ---
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+
+% --- Figures ---
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\usepackage{subcaption}
+
+% --- Links ---
+% hyperref is loaded by acl.sty; do not reload
+\usepackage{url}
+
+% --- Misc ---
+% xcolor is loaded by acl.sty; do not reload
+\usepackage{enumitem}
+\usepackage{placeins}  % \FloatBarrier
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% --- Float tuning (prevent tables from drifting to end) ---
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.8}
+\renewcommand{\textfraction}{0.1}
+\renewcommand{\floatpagefraction}{0.7}
+
+% ============================================================
+% Author block — anonymous for review
+% ============================================================
+\author{Anonymous}
+
+\begin{document}
+
+% Title, maketitle, and abstract (from title_abstract.tex)
+\input{title_abstract}
+
+% ============================================================
+% Body sections
+% ============================================================
+
+\input{introduction}
+
+\input{related_work}
+
+\input{methods}
+
+\input{results_discussion_v1}
+
+\input{conclusion}
+
+% ============================================================
+% Limitations (ACL requires before references)
+% ============================================================
+\input{limitations}
+
+% ============================================================
+% References
+% ============================================================
+\bibliography{references}
+
+% ============================================================
+% Appendix (complete numerical tables)
+% ============================================================
+\appendix
+\input{appendix}
+
+\end{document}

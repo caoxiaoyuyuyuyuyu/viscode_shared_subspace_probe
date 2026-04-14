@@ -1,0 +1,42 @@
+% Related Work
+% viscode_shared_subspace_probe — D028 framing
+% Generated: 2026-04-11
+
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Visual code generation.}
+Single-format specialists include LLM4SVG \cite{llm4svg2025} and Chat2SVG \cite{chat2svg2025} for SVG, DaTikZ \cite{datikz} and vTikZ \cite{vtikz2025} for TikZ, and VGBench \cite{vgbench2024} for multi-format evaluation.
+VisCoder2 \cite{viscoder2} is a multi-format model trained on 12 visualization languages.
+All prior work is \emph{purely behavioral}---evaluating execution pass rate or CLIP similarity---with no analysis of internal representations.
+Our work fills this gap by examining hidden states during visual code processing.
+
+\paragraph{Mechanistic interpretability of code LLMs.}
+Probing and representation analysis have been extensively applied to natural language models \cite{belinkov-2022-probing}, but their extension to code LLMs is recent.
+\citet{neuron-guided-2025} use neuron selectivity analysis and representational similarity analysis to identify concept layers shared across C++, Java, Python, Go, and JavaScript, finding that syntactic and semantic code concepts are encoded at consistent layers regardless of programming language.
+\citet{sae-correctness-2025} train sparse autoencoders on code-LLM residual streams to discover directions predicting code correctness.
+Our axis is orthogonal: where these works ask ``is \texttt{for-loop} represented the same way across Python and Go,'' we ask ``is \emph{red circle above blue square} represented the same way across SVG and TikZ.''
+The probe targets are properties of the \emph{rendered image} (color, shape count, spatial layout), not of the code syntax.
+To our knowledge, no prior work has examined image-grounded visual attributes in code-generation hidden states.
+
+\paragraph{Representation probing and the linear representation hypothesis.}
+Linear probing of neural network representations originated in NLP for analyzing syntactic and semantic structure \cite{hewitt-manning-2019-structural, conneau-etal-2018-what}.
+The linear representation hypothesis \cite{park2024linear} posits that high-level concepts are encoded as linear directions in LLM residual streams, providing theoretical grounding for linear probe studies.
+CKA (Centered Kernel Alignment) \cite{kornblith2019similarity} provides a representation-similarity metric invariant to invertible linear transformations, widely used for comparing representations across layers, models, and training stages.
+We adopt the standard probing methodology but apply it to a novel domain: \textbf{cross-format representational similarity} in visual code LLMs, using CKA as the primary metric with Procrustes distance as the primary robustness check (PWCCA \cite{morcos2018pwcca} is included as a supplementary metric but limited by $n \ll d$; \S\ref{sec:robustness-pwcca}).
+
+\paragraph{CKA: known limitations.}
+While CKA is widely used, it has known limitations.
+\citet{nguyen2021wide} show that CKA can be insensitive to functionally important differences between networks, particularly in wide architectures.
+\citet{ding2021grounding} propose statistical grounding for representation similarity, noting that naive CKA lacks formal hypothesis testing.
+\citet{tang2020similarity} survey functional and representational similarity measures, finding that linear CKA is sensitive to outliers in low-sample regimes.
+We mitigate these concerns by pairing CKA with permutation null testing (providing formal $p$-values), bootstrap confidence intervals, and an independent Procrustes distance check.
+
+\paragraph{Cross-format and cross-lingual transfer.}
+The broader question of whether LLMs develop format-agnostic internal representations has been studied in multilingual NLP.
+Cross-lingual probing shows that multilingual models learn partially shared representations across natural languages \cite{pires-etal-2019-multilingual, wu-dredze-2019-beto}, with shared structures emerging at intermediate layers.
+In the code domain, \citet{neuron-guided-2025} demonstrate shared concept layers across programming languages.
+Our work extends this line of inquiry to \textbf{visual code formats}: SVG, TikZ, and Asymptote share rendering semantics (2D vector graphics) but differ radically in syntax (XML markup, \LaTeX{} macros, imperative code), making them an ideal testbed for studying whether cross-format representational similarity reflects visual semantics or surface-level syntactic patterns.
+
+\paragraph{Training-free analysis.}
+Our framework requires no model training: we use off-the-shelf models, performing only inference and lightweight CPU-based linear probe fitting, in the tradition of training-free mechanistic analysis \cite{hewitt-manning-2019-structural, belinkov-2022-probing}.

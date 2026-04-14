@@ -1,0 +1,348 @@
+% appendix.tex — Complete numerical tables for the cross-format probing study
+\section*{Appendix}
+\label{sec:appendix}
+
+\setcounter{table}{0}
+\renewcommand{\thetable}{A\arabic{table}}
+
+%% ========================================================================
+%% Table A1: Complete CKA Values
+%% ========================================================================
+\begin{table*}[t]
+\centering
+\caption{Complete CKA similarity values per model, layer, and format pair. Mean is the arithmetic average of the three format pairs, consistent with main text Table~\ref{tab:cka_mean}.}
+\label{tab:cka_complete}
+\small
+\begin{tabular}{ll rrrr}
+\toprule
+\textbf{Model} & \textbf{Layer} & \textbf{SVG--TikZ} & \textbf{SVG--Asy} & \textbf{TikZ--Asy} & \textbf{Mean} \\
+\midrule
+Qwen2.5-Coder & L4  & 0.049 & 0.092 & 0.120 & 0.087 \\
+Qwen2.5-Coder & L8  & 0.059 & 0.087 & 0.125 & 0.090 \\
+Qwen2.5-Coder & L12 & 0.067 & 0.098 & 0.200 & 0.121 \\
+Qwen2.5-Coder & L16 & 0.086 & 0.124 & 0.212 & 0.141 \\
+Qwen2.5-Coder & L20 & 0.087 & 0.118 & 0.180 & 0.128 \\
+Qwen2.5-Coder & L24 & 0.105 & 0.109 & 0.209 & 0.141 \\
+Qwen2.5-Coder & L28 & 0.103 & 0.114 & 0.229 & 0.149 \\
+\midrule
+VisCoder2      & L4  & 0.050 & 0.092 & 0.122 & 0.088 \\
+VisCoder2      & L8  & 0.062 & 0.089 & 0.133 & 0.095 \\
+VisCoder2      & L12 & 0.075 & 0.103 & 0.218 & 0.132 \\
+VisCoder2      & L16 & 0.089 & 0.124 & 0.216 & 0.143 \\
+VisCoder2      & L20 & 0.086 & 0.124 & 0.181 & 0.130 \\
+VisCoder2      & L24 & 0.102 & 0.125 & 0.208 & 0.145 \\
+VisCoder2      & L28 & 0.093 & 0.116 & 0.203 & 0.137 \\
+\midrule
+Qwen2.5-Base   & L4  & 0.050 & 0.087 & 0.118 & 0.085 \\
+Qwen2.5-Base   & L8  & 0.058 & 0.087 & 0.122 & 0.089 \\
+Qwen2.5-Base   & L12 & 0.061 & 0.093 & 0.182 & 0.112 \\
+Qwen2.5-Base   & L16 & 0.067 & 0.112 & 0.166 & 0.115 \\
+Qwen2.5-Base   & L20 & 0.070 & 0.104 & 0.153 & 0.109 \\
+Qwen2.5-Base   & L24 & 0.086 & 0.099 & 0.177 & 0.121 \\
+Qwen2.5-Base   & L28 & 0.044 & 0.081 & 0.104 & 0.076 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+%% ========================================================================
+%% Table A2: Procrustes Distance
+%% ========================================================================
+\begin{table*}[t]
+\centering
+\caption{Procrustes distance per model, layer, and format pair.  Lower values indicate greater representational similarity after optimal rotation.}
+\label{tab:procrustes_complete}
+\small
+\begin{tabular}{ll rrr r}
+\toprule
+\textbf{Model} & \textbf{Layer} & \textbf{SVG--TikZ} & \textbf{SVG--Asy} & \textbf{TikZ--Asy} & \textbf{Mean} \\
+\midrule
+Qwen2.5-Coder & L4  & 0.073 & 0.095 & 0.139 & 0.102 \\
+Qwen2.5-Coder & L8  & 0.079 & 0.095 & 0.146 & 0.107 \\
+Qwen2.5-Coder & L12 & 0.090 & 0.106 & 0.217 & 0.138 \\
+Qwen2.5-Coder & L16 & 0.113 & 0.134 & 0.226 & 0.158 \\
+Qwen2.5-Coder & L20 & 0.113 & 0.128 & 0.198 & 0.146 \\
+Qwen2.5-Coder & L24 & 0.124 & 0.128 & 0.219 & 0.157 \\
+Qwen2.5-Coder & L28 & 0.117 & 0.124 & 0.220 & 0.153 \\
+\midrule
+VisCoder2      & L4  & 0.072 & 0.094 & 0.141 & 0.102 \\
+VisCoder2      & L8  & 0.080 & 0.095 & 0.150 & 0.108 \\
+VisCoder2      & L12 & 0.095 & 0.108 & 0.222 & 0.142 \\
+VisCoder2      & L16 & 0.115 & 0.133 & 0.222 & 0.157 \\
+VisCoder2      & L20 & 0.115 & 0.133 & 0.195 & 0.148 \\
+VisCoder2      & L24 & 0.123 & 0.136 & 0.216 & 0.158 \\
+VisCoder2      & L28 & 0.110 & 0.125 & 0.202 & 0.146 \\
+\midrule
+Qwen2.5-Base   & L4  & 0.071 & 0.093 & 0.136 & 0.100 \\
+Qwen2.5-Base   & L8  & 0.077 & 0.091 & 0.141 & 0.103 \\
+Qwen2.5-Base   & L12 & 0.083 & 0.097 & 0.201 & 0.127 \\
+Qwen2.5-Base   & L16 & 0.093 & 0.113 & 0.193 & 0.133 \\
+Qwen2.5-Base   & L20 & 0.096 & 0.112 & 0.177 & 0.128 \\
+Qwen2.5-Base   & L24 & 0.104 & 0.112 & 0.195 & 0.137 \\
+Qwen2.5-Base   & L28 & 0.065 & 0.084 & 0.133 & 0.094 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+%% ========================================================================
+%% Table A3: PWCCA Values
+%% ========================================================================
+\begin{table*}[t]
+\centering
+\caption{Projection-Weighted CCA (PWCCA; \citealt{morcos2018pwcca}) mean similarity per model and layer.  Higher values indicate stronger cross-format alignment.}
+\label{tab:pwcca_complete}
+\small
+\begin{tabular}{ll r}
+\toprule
+\textbf{Model} & \textbf{Layer} & \textbf{PWCCA} \\
+\midrule
+Qwen2.5-Coder & L4  & 0.7699 \\
+Qwen2.5-Coder & L8  & 0.7734 \\
+Qwen2.5-Coder & L12 & 0.8128 \\
+Qwen2.5-Coder & L16 & 0.8194 \\
+Qwen2.5-Coder & L20 & 0.7989 \\
+Qwen2.5-Coder & L24 & 0.7786 \\
+Qwen2.5-Coder & L28 & 0.7791 \\
+\midrule
+VisCoder2      & L4  & 0.7680 \\
+VisCoder2      & L8  & 0.7743 \\
+VisCoder2      & L12 & 0.8046 \\
+VisCoder2      & L16 & 0.8086 \\
+VisCoder2      & L20 & 0.7885 \\
+VisCoder2      & L24 & 0.7764 \\
+VisCoder2      & L28 & 0.7712 \\
+\midrule
+Qwen2.5-Base   & L4  & 0.7587 \\
+Qwen2.5-Base   & L8  & 0.7657 \\
+Qwen2.5-Base   & L12 & 0.8012 \\
+Qwen2.5-Base   & L16 & 0.8068 \\
+Qwen2.5-Base   & L20 & 0.7932 \\
+Qwen2.5-Base   & L24 & 0.7760 \\
+Qwen2.5-Base   & L28 & 0.8114 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+%% ========================================================================
+%% Table A4: Permuted-Label Probe Results
+%% ========================================================================
+\begin{table*}[t]
+\centering
+\caption{Format-classification probe accuracy with real vs.\ permuted labels.  The large gap ($\approx 0.667$) confirms that probe accuracy reflects genuine format information rather than memorized structure.}
+\label{tab:permuted_probe}
+\small
+\begin{tabular}{ll rrr}
+\toprule
+\textbf{Model} & \textbf{Layer} & \textbf{Real Acc.} & \textbf{Permuted Acc.} & \textbf{Gap} \\
+\midrule
+Qwen2.5-Coder & L4  & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Coder & L8  & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Coder & L12 & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Coder & L16 & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Coder & L20 & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Coder & L24 & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Coder & L28 & 1.000 & 0.333 & 0.667 \\
+\midrule
+VisCoder2      & L4  & 1.000 & 0.333 & 0.667 \\
+VisCoder2      & L8  & 1.000 & 0.333 & 0.667 \\
+VisCoder2      & L12 & 1.000 & 0.333 & 0.667 \\
+VisCoder2      & L16 & 1.000 & 0.333 & 0.667 \\
+VisCoder2      & L20 & 1.000 & 0.333 & 0.667 \\
+VisCoder2      & L24 & 1.000 & 0.333 & 0.667 \\
+VisCoder2      & L28 & 1.000 & 0.333 & 0.667 \\
+\midrule
+Qwen2.5-Base   & L4  & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Base   & L8  & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Base   & L12 & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Base   & L16 & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Base   & L20 & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Base   & L24 & 1.000 & 0.333 & 0.667 \\
+Qwen2.5-Base   & L28 & 1.000 & 0.333 & 0.667 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+%% ========================================================================
+%% Table A5: A2 Permutation Test Summary
+%% ========================================================================
+\begin{table*}[t]
+\centering
+\caption{A2 permutation test ($n{=}5{,}000$): observed cross-format CKA mean vs.\ null distribution obtained by permuting sample identities within each format.  $p{<}0.001$ for all models confirms that cross-format representational similarity is not an artifact of format-level statistics.}
+\label{tab:a2_permutation}
+\small
+\begin{tabular}{l rrrr}
+\toprule
+\textbf{Model} & \textbf{Obs.\ CKA Mean} & \textbf{Null Mean} & \textbf{Null Std} & \textbf{$p$-value} \\
+\midrule
+Qwen2.5-Coder & 0.123 & 0.041 & 0.003 & ${<}\,0.001$ \\
+VisCoder2      & 0.124 & 0.044 & 0.003 & ${<}\,0.001$ \\
+Qwen2.5-Base   & 0.101 & 0.037 & 0.003 & ${<}\,0.001$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+%% ========================================================================
+%% Algorithm: Permutation Test Pseudocode
+%% ========================================================================
+
+\begin{algorithm}[h!]
+\caption{A2 Permutation Null Test for Cross-Format CKA}
+\label{alg:perm_test}
+\begin{algorithmic}[1]
+\REQUIRE Hidden-state matrices $\mathbf{H}^{(m,f,l)} \in \mathbb{R}^{N \times d}$ for model $m$, format $f$, layer $l$
+\REQUIRE Number of permutations $B = 5{,}000$
+\STATE \textbf{H$_0$:} Cross-format CKA arises solely from format-level statistics; sample identity carries no aligned signal across formats.
+\FOR{each model $m$}
+  \STATE Compute observed CKA for each $(l, f_1, f_2)$ pair from aligned Gram matrices
+  \STATE $\bar{c}_\text{obs} \leftarrow \text{mean over all layers and pairs}$
+  \FOR{$b = 1$ to $B$}
+    \STATE Draw random permutation $\pi$ of $\{1, \ldots, N\}$
+    \FOR{each layer $l$ and pair $(f_1, f_2)$}
+      \STATE Permute rows and columns of $\mathbf{K}^{(f_2)}$ by $\pi$: $\tilde{\mathbf{K}}^{(f_2)}_{ij} = \mathbf{K}^{(f_2)}_{\pi(i),\pi(j)}$
+      \STATE Compute $\text{CKA}(\mathbf{K}^{(f_1)}, \tilde{\mathbf{K}}^{(f_2)})$
+    \ENDFOR
+    \STATE $\bar{c}_\text{null}^{(b)} \leftarrow \text{mean over all layers and pairs}$
+  \ENDFOR
+  \STATE $p \leftarrow \frac{1}{B} \sum_{b=1}^{B} \mathbf{1}[\bar{c}_\text{null}^{(b)} \geq \bar{c}_\text{obs}]$
+\ENDFOR
+\ENSURE Per-model $p$-value, null distribution $\{\bar{c}_\text{null}^{(b)}\}_{b=1}^B$, observed/null ratio
+\end{algorithmic}
+\end{algorithm}
+
+%% ========================================================================
+%% Table A6: Format Probe Accuracy (moved from main text)
+%% ========================================================================
+\begin{table}[h!]
+\centering
+\small
+\caption{Format classification probe accuracy (5-fold CV, logistic regression). All 21 model--layer cells are 1.0000.}
+\label{tab:probe_accuracy}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+Model & L4 & L8 & L12 & L16 & L20 & L24 & L28 \\
+\midrule
+Qwen2.5-Coder  & 1.0000 & 1.0000 & 1.0000 & 1.0000 & 1.0000 & 1.0000 & 1.0000 \\
+VisCoder2       & 1.0000 & 1.0000 & 1.0000 & 1.0000 & 1.0000 & 1.0000 & 1.0000 \\
+Qwen2.5-Base    & 1.0000 & 1.0000 & 1.0000 & 1.0000 & 1.0000 & 1.0000 & 1.0000 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+%% ========================================================================
+%% Table A7: PWCCA Null Calibration (moved from main text)
+%% ========================================================================
+\begin{table}[h!]
+\centering
+\small
+\caption{PWCCA permutation null calibration (300 perms). The observed/null gap is statistically significant but small (ratio ${\sim}1.1\times$), compared to CKA's ${\sim}3\times$ null ratio.}
+\label{tab:pwcca_null}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Model & Observed & Null (mean$\pm$std) & Ratio & $p$ \\
+\midrule
+Qwen2.5-Coder  & 0.790 & 0.688$\pm$0.004 & 1.148$\times$ & $<$0.001 \\
+VisCoder2       & 0.785 & 0.685$\pm$0.004 & 1.145$\times$ & $<$0.001 \\
+Qwen2.5-Base    & 0.788 & 0.699$\pm$0.004 & 1.127$\times$ & $<$0.001 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+%% ========================================================================
+%% Table A8: SBERT Threshold Sensitivity (C3)
+%% ========================================================================
+\begin{table}[h!]
+\centering
+\small
+\caption{SBERT threshold sensitivity (C3): mean CKA at L28 by matching threshold. All 252 triples have min cosine $\geq 0.70$, so thresholds $\leq 0.70$ yield identical pools. At thresholds $\geq 0.75$, $N$ drops sharply, making CKA estimates unreliable due to $n \ll d$ inflation \cite{nguyen2021wide}; we do not interpret these values as evidence of stronger alignment. The relative ordering TikZ--Asy $>$ SVG--Asy $>$ SVG--TikZ is preserved at $N{=}51$, consistent with the token-overlap gradient (F3).}
+\label{tab:sbert_sensitivity}
+\begin{tabular}{rr ccc}
+\toprule
+Threshold & $N$ & Coder & VisCoder2 & Base \\
+\midrule
+0.60 & 252 & 0.149 & 0.137 & 0.076 \\
+0.65 & 252 & 0.149 & 0.137 & 0.076 \\
+0.70 & 252 & 0.149 & 0.137 & 0.076 \\
+0.75 &  51 & 0.252 & 0.247 & 0.146 \\
+0.80 &   6 & 0.739 & 0.766 & 0.616 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ========================================================================
+%% Stage A Generation Details (moved from Methods for space)
+%% ========================================================================
+\paragraph{Stage A generation details.}
+Eval pool sources: SVG from VisPlotBench and VCM-SVG; TikZ from DaTikZ v1 test; Asymptote from VisPlotBench and VCM-Asy.
+All sources filtered uniformly: code length $\in [50, 8000]$ characters, caption length $\in [10, 3000]$ characters, render success within 30s, normalized-code-hash deduplication.
+Generation uses vLLM \cite{vllm} in fp16 with $T{=}0.3$, $\text{top\_p}{=}1.0$, $n{=}1$, format-specific max tokens (SVG/TikZ: 1024, Asy: 2048).
+3-shot exemplars are drawn from independent training data disjoint from both eval and probe pools.
+The CLIPScore SNR gate was calibrated in a pilot study ($n{=}20$, 5 dimensions) using a shuffle-permutation null.
+
+%% ========================================================================
+%% Table A9: Stage A Generation Summary
+%% ========================================================================
+\begin{table}[h!]
+\centering
+\small
+\caption{Stage A generation summary: validity rate per model and format (3,600 total, 0-shot and 3-shot pooled). Temperature $T{=}0.3$, $n{=}1$ per prompt. (Table~A9)}
+\label{tab:stage_a_summary}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lccc}
+\toprule
+Model & SVG & TikZ & Asy \\
+\midrule
+Qwen2.5-Coder  & 1.000 & 0.995 & 1.000 \\
+VisCoder2       & 0.972 & 0.962 & 1.000 \\
+Qwen2.5-Base    & 0.662 & 0.722 & 0.752 \\
+\midrule
+Overall         & \multicolumn{3}{c}{3,227/3,600 valid (89.6\%)} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\paragraph{PWCCA in the $n \ll d$ regime.}
+The limited discriminative power of PWCCA in this study reflects known properties of CCA when sample size is much smaller than feature dimensionality.
+With $n{=}252$ samples and $d{=}3{,}584$ features (ratio 0.07), canonical correlations converge toward 1.0 regardless of true signal strength, compressing the dynamic range available to distinguish signal from noise.
+This is the same degeneracy that motivated our removal of raw CCA from the analysis pipeline.
+PWCCA corroborates the \emph{direction} of the CKA signal---observed values exceed the permutation null for all three models---but its observed/null ratio (1.13--1.15$\times$) is far below CKA's (${\sim}3\times$), limiting its value as an independent robustness check in this experimental design.
+
+%% ========================================================================
+%% Code-Naive Baseline: Llama-3-8B
+%% ========================================================================
+
+\subsection{Code-Naive Baseline: Llama-3-8B}
+\label{sec:llama-baseline}
+
+\paragraph{Note:} This ablation is a post-hoc exploratory analysis (D075), not a pre-registered prediction.
+
+To test whether the cross-format CKA signal requires code-specialized pretraining, we apply the same probing framework to Meta-Llama-3-8B (base), a general-purpose LLM with no code-specific training.
+We extract hidden states at three depth-equivalent layers (L4/L18/L31 out of 32, corresponding to 13\%/56\%/97\% depth) for all 252 triples and 252 Python snippets, computing CKA with 5{,}000 permutations and 1{,}000 bootstrap subsamples.
+
+\begin{table}[!ht]
+\centering
+\small
+\caption{Llama-3-8B baseline CKA: visual cross-format pairs (top) and python--visual pairs (bottom). Bold $p$-values indicate $p < 0.005$.}
+\label{tab:llama_baseline}
+\begin{tabular}{lccc}
+\toprule
+Pair & L4 (13\%) & L18 (56\%) & L31 (97\%) \\
+\midrule
+\multicolumn{4}{l}{\emph{Visual cross-format pairs}} \\
+SVG--TikZ   & 0.053 (\textbf{p=.002}) & 0.092 (\textbf{p<.001}) & 0.105 (\textbf{p<.001}) \\
+SVG--Asy    & 0.075 (\textbf{p<.001}) & 0.101 (\textbf{p<.001}) & 0.105 (\textbf{p<.001}) \\
+TikZ--Asy   & 0.126 (\textbf{p<.001}) & 0.211 (\textbf{p<.001}) & 0.202 (\textbf{p<.001}) \\
+\midrule
+\multicolumn{4}{l}{\emph{Python--visual pairs}} \\
+Python--SVG  & 0.060 (p=.184) & 0.062 (p=.587) & 0.064 (p=.520) \\
+Python--TikZ & 0.085 (p=.182) & 0.101 (p=.161) & 0.118 (\textbf{p=.004}) \\
+Python--Asy  & 0.107 (p=.118) & 0.115 (p=.100) & 0.128 (\textbf{p=.002}) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Visual cross-format CKA is significant at all 9 cells ($p \leq 0.002$), with magnitudes comparable to the Qwen family (mean 0.119 vs.\ Qwen 0.119--0.154).
+The TikZ--Asy $>$ SVG--Asy $>$ SVG--TikZ ordering replicates perfectly, strengthening the token-overlap gradient (F3) as robust to the absence of code-specialized pretraining, at least for Llama-3-8B.
+In contrast, python--visual pairs are overwhelmingly non-significant (7/9 cells $p > 0.10$); only Python--TikZ and Python--Asy at L31 reach marginal significance ($p = 0.004$, $p = 0.002$), which may reflect generic final-layer feature convergence rather than meaningful cross-format structure.
+
+This split---visual CKA persists without code pretraining while python--visual entanglement does not---suggests that the C1 failure mode (python yielding 60--110\% of visual CKA in code-pretrained models) is specific to code-pretrained LLMs, not a general property of language models.

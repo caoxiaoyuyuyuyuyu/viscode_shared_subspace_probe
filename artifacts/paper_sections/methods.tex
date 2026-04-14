@@ -1,0 +1,117 @@
+% Methods
+% viscode_shared_subspace_probe — D028 updated (no "shared subspace", no Step 4)
+% Generated: 2026-04-11
+
+\section{Method}
+\label{sec:method}
+
+\subsection{Overview}
+
+We present a training-free framework for measuring cross-format representational similarity in visual code LLMs.
+The design separates \textbf{behavioral generation} (Stage~A) from \textbf{representational probing} (Stage~B) using two independent tool stacks on two disjoint data pools, ensuring that generation ability and representation content are measured independently.
+We demonstrate this framework through a case study on the Qwen2.5 model family.
+
+\subsection{Models}
+
+We study three 7B-parameter models spanning a generalist--specialist spectrum:
+
+\begin{itemize}
+    \item \textbf{Qwen2.5-Coder-7B-Instruct} \cite{qwen25coder} --- a code-specialized LLM instruction-tuned on broad programming tasks, serving as the primary model with demonstrated multi-format visual code capability.
+
+    \item \textbf{Qwen2.5-7B} (base) --- the general-purpose pretrained model without code-specific instruction tuning, serving as a text-only control.
+    Because Stage~B uses teacher-forcing (\S\ref{sec:stage-b}), base model hidden states reflect what the model \emph{encodes} when processing visual code tokens, regardless of whether it can \emph{generate} such code autonomously.
+
+    \item \textbf{VisCoder2-7B} \cite{viscoder2} --- a Qwen2.5-Coder-7B-Instruct model further fine-tuned on VisCode-Multi-679K, a 679K-example multi-language visualization SFT corpus spanning 12 visual languages including SVG, TikZ, and Asymptote.
+\end{itemize}
+
+The headline analysis uses the first two models ($N{=}12$ cells: 2~models $\times$ 6~ordered format-pairs).
+VisCoder2 is included in an auxiliary $N{=}18$ analysis reported as an \emph{exploratory view with known memorization floor}: its SFT training data overlaps with both our eval pool and probe pool sources (\S\ref{sec:contamination}), making its cells informative about contamination effects rather than clean cross-format similarity.
+
+\subsection{Visual Code Formats}
+
+We target three shape-drawing domain-specific languages that share common rendering semantics (2D vector graphics with color, position, and style attributes) while differing radically in syntax:
+
+\begin{itemize}
+    \item \textbf{SVG} --- XML-based markup with explicit coordinate attributes.
+    \item \textbf{TikZ} --- \LaTeX{} macro language with relative/absolute positioning.
+    \item \textbf{Asymptote} --- imperative C-like language with function calls.
+\end{itemize}
+
+This yields 3 unordered format-pairs (SVG--TikZ, SVG--Asy, TikZ--Asy) per model per layer.
+Linear CKA is symmetric ($\text{CKA}(X,Y) = \text{CKA}(Y,X)$), so the headline $N{=}12$ statistic counts $3~\text{pairs} \times 2~\text{models (Coder, base)} \times 1 = 6$ independent CKA values per layer; including all 7 layers and 2 test statistics (CKA, Procrustes) yields 12 cells for the primary analysis.
+VisCoder2 adds 6 cells to the auxiliary $N{=}18$ analysis.
+
+\subsection{Stage A: Behavioral Generation}
+\label{sec:stage-a}
+
+Stage A establishes that the models under study can generate valid visual code, independent of Stage B's representational analysis.
+We construct an eval pool of 200 captioned visual programs per format (600 total) from held-out test splits of VisPlotBench,\footnote{\url{https://huggingface.co/datasets/xingxm/VisPlotBench}} DaTikZ \cite{datikz}, and VisCode-Multi-679K \cite{viscoder2}.
+Each caption is presented under 0-shot and 3-shot regimes, yielding 3{,}600 free generations evaluated by format validity and a hybrid content fidelity metric (CLIPScore \cite{clip} for high-SNR attributes; programmatic AST match for spatial attributes).
+Generation parameters and results are in Table~\ref{tab:stage_a_summary} (Appendix).
+
+\subsection{Stage B: Hidden-State Extraction}
+\label{sec:stage-b}
+
+\paragraph{Probe pool construction.}
+The probe pool is constructed from \emph{training splits} of datasets disjoint from the eval pool: SVG from SVGX-Core-250k\footnote{\url{https://huggingface.co/datasets/xingxm/SVGX-Core-250k}} (${\sim}257$K), TikZ from DaTikZ v2 train \cite{datikz} (94{,}532), and Asymptote from VCM-Asy \cite{viscoder2} (22{,}539).
+
+\paragraph{Cross-format semantic alignment.}
+To enable meaningful cross-format comparison, we construct semantically matched triples (one caption per format describing a similar visual concept).
+Captions are truncated to 50 tokens and embedded using \texttt{all-MiniLM-L6-v2} \cite{reimers2019sbert}.
+A greedy matching algorithm retains triples where the minimum pairwise cosine similarity $\geq 0.70$.
+This yields $N{=}252$ matched triples.
+All 252 triples have minimum pairwise cosine $\geq 0.70$; CKA is therefore invariant to threshold choices in $[0.60, 0.70]$. At stricter thresholds ($0.75$, $N{=}51$; $0.80$, $N{=}6$), CKA increases but sample sizes enter severe $n \ll d$ regime (Table~\ref{tab:sbert_sensitivity}, Appendix).
+
+\paragraph{Teacher-forced hidden-state extraction.}
+For each (model, format, triple) combination, we construct a prompt from the caption and \emph{teacher-force} the corresponding reference code.
+During the forward pass, we capture the residual stream at 7 equidistant layers $\{4, 8, 12, 16, 20, 24, 28\}$ and \textbf{mean-pool over code-token positions only} (masking caption, system, and chat-template tokens), producing one vector of dimension $d_\text{hidden} = 3{,}584$ per (model, layer, format, triple).
+
+Teacher-forcing is the methodologically correct choice for representation probing \cite{hewitt-manning-2019-structural, belinkov-2022-probing}: free-generation hidden states confound generation ability with representation content.
+By fixing the token sequence to a known-good reference, we isolate ``what the model encodes when it processes this visual concept in this format.''
+This makes Qwen2.5-7B base a fair text-only control: it cannot generate valid visual code, but teacher-forcing reveals whether its representations nonetheless encode cross-format structure.
+
+\subsection{Statistical Analysis}
+\label{sec:analysis}
+
+\paragraph{Centered Kernel Alignment (CKA).}
+For each (model, layer, format-pair), we compute linear CKA \cite{kornblith2019similarity} between the two $252 \times 3584$ hidden-state matrices.
+CKA measures representational alignment invariant to invertible linear transformations, yielding one similarity scalar per cell.
+
+\paragraph{Format identity probe.}
+We train a logistic regression classifier (\texttt{sklearn}, $C{=}1.0$, \texttt{max\_iter}${=}2000$) on the hidden-state vectors to predict format identity (3-way: SVG vs.\ TikZ vs.\ Asy).
+This directly tests whether format-specific information is linearly decodable at each layer.
+
+\paragraph{Bootstrap confidence intervals.}
+We construct 95\% confidence intervals for CKA via bootstrap resampling ($B{=}1{,}000$ iterations, resampling the 252 triples with replacement).
+
+\paragraph{Permutation null test.}
+We test the null hypothesis $H_0$: cross-format CKA arises solely from format-level statistics; sample identity carries no aligned signal across formats.
+For each model, we permute the $N{=}252$ sample indices of the second format's Gram matrix 5{,}000 times, recompute CKA for all layer--pair combinations, and average to obtain a null distribution (Algorithm~\ref{alg:perm_test}, Appendix).
+The $p$-value is the fraction of null means $\geq$ the observed mean.
+
+\paragraph{Power simulation (A1).}
+We estimate detection power via 1{,}000 Monte Carlo trials for CKA effect sizes $\in \{0.05, 0.10, 0.15\}$ at $N{=}12$ (headline) and $N{=}18$ (auxiliary), ensuring sufficient power to detect signals of the observed magnitude.
+
+\paragraph{Robustness checks.}
+We verify CKA findings with two complementary metrics:
+\begin{itemize}
+    \item \textbf{Procrustes distance} --- orthogonal alignment-based similarity, capturing geometric correspondence.
+    \item \textbf{PWCCA} \cite{morcos2018pwcca} --- Projection Weighted Canonical Correlation Analysis, which weights canonical correlations by explained variance, providing a scale-sensitive complement to scale-invariant CKA.
+    We additionally compute a PWCCA permutation null baseline (300 permutations per model) to verify that PWCCA values are not artifacts of high dimensionality.
+\end{itemize}
+
+\subsection{Probe Pool Contamination Disclosure}
+\label{sec:contamination}
+
+We explicitly disclose and account for probe pool contamination.
+SVGX-Core-250k was packaged in December 2024 (post Qwen2.5 training cutoff), but underlying SVG content from SVGRepo and public icon libraries predates the cutoff and may have entered pretraining via Common Crawl (risk: LOW--MEDIUM).
+DaTikZ v2 sources from arXiv and StackExchange are similarly pre-cutoff public content (risk: MEDIUM).
+VCM-Asy is part of VisCoder2's SFT training data, making VisCoder2's Asymptote-related cells measure memorization rather than generalization (risk: HIGH for VisCoder2).
+
+VisCoder2 is excluded from the headline $N{=}12$ statistic as the primary mitigation.
+The $N{=}12$ vs.\ $N{=}18$ comparison is reported in the Discussion as direct quantitative evidence of contamination effects on representational geometry.
+
+\subsection{Reproducibility}
+
+All code, eval pool JSONL files (with SHA256 hashes recorded prior to generation), probe pool triples with per-triple provenance metadata, and pre-registration document (v3.4) are released.
+The complete pipeline requires a single GPU with $\geq$48GB VRAM and ${\sim}$10 CPU-hours for the full analysis.

@@ -1,0 +1,38 @@
+% Introduction
+% viscode_shared_subspace_probe — D028/D029/D030 framing
+% Generated: 2026-04-11
+
+\section{Introduction}
+\label{sec:intro}
+
+% P1: visual code generation booming, all behavioral eval
+The generation of visual content through code is a rapidly growing capability of large language models.
+Rather than producing raster images directly, these models synthesize programs in domain-specific formats---SVG for web graphics, TikZ for scientific figures, Asymptote for geometric illustrations---that compile into precise, scalable visual output.
+Specialized systems such as VisCoder2 \cite{viscoder2}, LLM4SVG \cite{llm4svg2025}, and Chat2SVG \cite{chat2svg2025} have demonstrated increasingly sophisticated visual code generation, while general-purpose code LLMs like the Qwen2.5-Coder family \cite{qwen25coder} handle multiple such formats within a single model.
+However, all existing evaluations of these models are \emph{purely behavioral}: models are judged by execution pass rates, VLM-judge scores, or CLIP similarity, with no analysis of what visual structure the models internally encode.
+
+% P2: natural question
+This leaves a fundamental question unanswered: \emph{do models that generate visual code in multiple formats develop format-agnostic internal representations of visual content, or are their hidden states predominantly format-specific?}
+If different visual code formats converge to similar representations for semantically related visual programs, it would suggest that these models have abstracted visual semantics beyond surface syntax.
+Conversely, if representations are entirely format-specific---as one might expect given the radically different tokenization of SVG (XML markup), TikZ (\LaTeX{} macros), and Asymptote (imperative C-like code)---it would imply that multi-format capability arises from disjoint pathways rather than shared computation.
+
+% P3: our contribution
+Addressing this question is methodologically non-trivial.
+Unlike probing for discrete linguistic properties \cite{hewitt-manning-2019-structural, belinkov-2022-probing}, measuring representational similarity across output formats requires comparing hidden-state geometries for semantically related but syntactically distinct programs, with careful attention to small sample sizes and syntactic confounds.
+In this work, we introduce a \textbf{training-free probing framework} for measuring cross-format representational similarity in visual code LLMs.
+The framework operates entirely on cached hidden-state representations extracted via teacher-forcing, combining linear Centered Kernel Alignment (CKA; \citealt{kornblith2019similarity}) with bootstrap confidence intervals, permutation null testing, and a Procrustes distance robustness check.
+We demonstrate this framework through a case study on the Qwen2.5 model family.
+
+% P4-P5: compressed — findings already in Abstract
+Our case study on three Qwen2.5-based 7B models finds statistically significant but weak cross-format CKA (${\sim}3\times$ the permutation null), lexically confounded at pair-level (BPE token Jaccard $\rho \approx 0.7$), with residual layer-dependent structure.
+The observed similarity is of \textbf{uncertain origin}, and we present these results as a methodological template.
+Our contributions are:
+
+\begin{enumerate}
+    \item \textbf{A training-free probing framework} for measuring cross-format representational similarity in LLMs, combining CKA with bootstrap confidence intervals, permutation null testing (5{,}000 permutations), power simulation, and Procrustes distance robustness check.
+
+    \item \textbf{Five empirical findings} from a Qwen2.5 case study---the first representation-level analysis of multi-format visual code LLMs, including a pre-registered negative control that establishes the measured cross-format signal reflects code-general rather than visual-specific structure---demonstrating both the utility of the framework and the complexity of interpreting cross-format similarity signals.
+
+    \item \textbf{An open-source analysis pipeline} covering data generation, hidden-state extraction, CKA computation, permutation testing, and visualization, designed for replication across model families beyond the single-family case study presented here.
+\end{enumerate}
+

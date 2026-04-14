@@ -1,0 +1,38 @@
+% Limitations
+% viscode_shared_subspace_probe — D028 framing
+% Generated: 2026-04-11
+
+\section{Limitations}
+\label{sec:limitations}
+
+\paragraph{(a) Sample size and model diversity.}
+The headline Qwen analysis operates on $N{=}12$ cells, closer to a within-family ablation than a cross-model comparison.
+The cross-architecture extension (\S\ref{sec:generalizability}) adds three models from distinct families (Mistral, BigCode, MoE), confirming that the weak signal generalizes.
+However, all models are sampled at the same $n{=}252$ triples with 7 equidistant layers, which may compress inter-model differences.
+Additional scales (e.g., 70B+), training paradigms (e.g., RLHF-heavy models), and non-Western tokenizers remain untested.
+
+\paragraph{(b) Power interpretation.}
+A1 power = 1.0 confirms that the permutation test can detect a CKA signal of the observed magnitude; it does \emph{not} establish that the effect size is large enough to be practically meaningful or to support claims about visual semantics.
+The distinction between statistical significance and practical significance is critical given the small absolute CKA values (0.08--0.15).
+
+\paragraph{(c) Contamination.}
+VisCoder2 is fine-tuned on VisCode-Multi-679K, which includes VCM-Asy (overlapping with the probe pool source for Asymptote) and VCM-TikZ (71.7\% overlap with the TikZ probe pool source).
+This creates a memorization floor for VisCoder2's Asy- and TikZ-related cells.
+The headline $N{=}12$ statistic excludes VisCoder2 from the primary comparison as mitigation.
+However, the remaining Qwen2.5 models may also have been exposed to SVG and TikZ content from Common Crawl during pretraining, a risk that cannot be fully quantified.
+
+\paragraph{(d) No visual-level pairing.}
+The probe pool is semantically matched via SBERT caption similarity (cosine $\geq 0.70$), not by rendering the same visual content in multiple formats.
+True visual-level paired datasets---where identical geometric scenes are expressed in SVG, TikZ, and Asymptote---do not currently exist at sufficient scale.
+Without such data, we cannot fully disentangle visual semantic similarity from textual and syntactic similarity in the CKA measurement.
+
+\paragraph{(e) Scope of formats.}
+We examine three visual code formats (SVG, TikZ, Asymptote), all of which produce 2D vector graphics.
+The framework has not been tested on other visual code paradigms such as Processing, p5.js, or raster-generating code, nor on 3D formats.
+The applicability of our findings to these broader settings is unknown.
+
+\paragraph{(f) Negative control scope.}
+Our pre-registered C1 negative control (\S\ref{sec:c1}) formally fails the D060 criterion: non-visual Python code yields 60--110\% of the visual cross-format CKA in magnitude across 3~models $\times$ 7~layers.
+The Python snippets are randomly sampled (not semantically matched to the visual triples), which limits the precision of this comparison.
+A stronger control would use semantically matched non-visual code triples (e.g., Python programs describing analogous computational structures), which remains a non-trivial dataset construction challenge.
+This failure establishes that the measured cross-format signal reflects code-general rather than visual-specific structure; the random sampling limits only the precision of this quantification, not the qualitative conclusion.

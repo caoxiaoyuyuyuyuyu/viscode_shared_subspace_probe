@@ -1,0 +1,17 @@
+% Conclusion
+% viscode_shared_subspace_probe — D028 framing
+% Generated: 2026-04-11
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+We have presented a training-free probing framework for measuring cross-format representational similarity in visual code language models, combining linear CKA with bootstrap confidence intervals, permutation null testing, and Procrustes distance robustness check.
+
+Applied to six models spanning four architecture families (Qwen, Mistral, BigCode, MoE) across SVG, TikZ, and Asymptote (252 matched triples, 7 equidistant layers per model), we find:
+(i)~statistically significant but weak cross-format CKA in all six models ($2.55$--$3.01\times$ the permutation null, $p < 0.001$);
+(ii)~a universal TikZ--Asy $\gg$ SVG--TikZ asymmetry consistent with a token-overlap gradient (BPE Jaccard $\rho \approx 0.7$ at pair level);
+(iii)~architecture-dependent layer profiles---inverted-U, broadly rising, late-plateau, and bimodal---ruling out a universal ``mid-layer peak'' characterization; and
+(iv)~a pre-registered non-visual Python negative control (D060) formally fails: python code yields 60--110\% of the visual CKA across 20/21 evaluation cells, establishing that code-general structure---rather than visual-specific representations---dominates the measured alignment.
+
+The cross-format similarity is of \textbf{uncertain origin}: token-overlap gradient and code-general structure provide plausible non-visual explanations for the majority of the signal.
+We release the complete analysis pipeline as a methodological template for future work on format-residualized CKA and visually-paired datasets to isolate genuine visual abstraction.

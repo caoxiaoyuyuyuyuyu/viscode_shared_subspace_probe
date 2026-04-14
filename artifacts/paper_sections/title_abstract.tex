@@ -1,0 +1,42 @@
+% Title + Abstract
+% viscode_shared_subspace_probe — D028/D029/D030 framing
+% Generated: 2026-04-11
+
+%% ============================================================
+%% TITLE (11 words, no banned phrases)
+%% ============================================================
+
+\title{Cross-Format Representational Probing of Visual Code LLMs:\\A Training-Free Framework with a Qwen2.5 Case Study}
+
+\maketitle
+
+%% ============================================================
+%% ABSTRACT (~230 words)
+%% ============================================================
+
+\begin{abstract}
+% (1) Motivation
+Large language models increasingly generate visual content through code---SVG, TikZ, Asymptote---yet their internal representations during this process remain unexplored.
+Do models that handle multiple visual code formats develop format-agnostic representations, or are their hidden states predominantly format-specific?
+
+% (2) Method
+We introduce a training-free probing framework for measuring cross-format representational similarity in visual code LLMs.
+The framework extracts hidden states via teacher-forcing, then applies linear Centered Kernel Alignment (CKA) with bootstrap confidence intervals, permutation null testing (5{,}000 permutations), and a Procrustes distance robustness check.
+
+% (3) Findings — Qwen case study
+Applying this framework to the Qwen2.5 family (Coder-7B-Instruct, base 7B, and VisCoder2-7B) across 252 semantically matched triples at 7 equidistant layers, we report five findings:
+(1)~format identity is perfectly decodable at every layer (tokenization artifact);
+(2)~cross-format CKA is statistically significant but weak ($2.8$--$3.0\times$ the permutation null, $p < 0.001$; bootstrap mean peak 0.154--0.187);
+(3)~TikZ--Asymptote similarity systematically exceeds SVG--TikZ by $2$--$3\times$, following a token-overlap gradient (BPE Jaccard $\rho \approx 0.7$ at pair level) with layer-dependent modulation ($\rho = 0.57$ across 126 cells);
+(4)~only Qwen2.5-base among six tested models exhibits a sharp final-layer CKA drop, which affects non-visual Python code ($-60\%$) more severely than visual code ($-37\%$), consistent with generic final-layer destabilization rather than visual-specific specialization;
+(5)~visual-code supervised fine-tuning does not substantially alter cross-format structure.
+
+% (3b) Cross-architecture generalizability
+Cross-architecture validation on three additional models (Codestral-22B, StarCoder2-15B, DeepSeek-Coder-V2-Lite) spanning Mistral, BigCode, and MoE architectures confirms that the weak cross-format signal generalizes: all six models show $p < 0.001$ with obs/null ratios of $2.55$--$3.01\times$.
+However, peak CKA depth is architecture-dependent (56--100\% depth), ranging from inverted-U profiles to broadly rising trajectories to bimodal patterns, ruling out a universal ``mid-layer peak'' characterization.
+
+% (4) Significance
+A pre-registered negative control (D060) formally fails: non-visual Python code yields 60--110\% of the visual cross-format CKA in magnitude at 20/21 evaluation cells, establishing that code-general structure---rather than visual-specific representations---dominates the measured alignment.
+However, a code-naive ablation (Llama-3-8B) shows this failure mode is itself code-pretraining-specific: visual cross-format CKA persists without code pretraining (9/9 cells $p < 0.005$), while python--visual entanglement does not (7/9 cells $p > 0.10$).
+We release the complete pipeline as a methodological template, emphasizing honest reporting of weak and ambiguous findings to advance rigorous representation analysis of code LLMs beyond behavioral evaluation.
+\end{abstract}
