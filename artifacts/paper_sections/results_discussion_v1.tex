@@ -194,7 +194,7 @@ The design yields 3~models $\times$ 7~layers $\times$ 3~pairs = 63 python-X cell
 
 \paragraph{Magnitude (M1).}
 The pre-registered criterion requires mean python-X CKA $< 0.5 \times$ mean visual-X CKA at each (model, layer) pair.
-This criterion fails at 20 of 21 cells: python-X CKA ranges from 60--110\% of visual-X CKA across models and layers (Table~\ref{tab:c1_magnitude}).
+This criterion fails at 20 of 21 cells: python-X CKA ranges from 60--110\% of visual-X CKA across models and layers (Appendix Table~\ref{tab:cka_complete}).
 The sole passing cell is Qwen2.5~base at L28 (python mean 0.030 vs.\ visual mean 0.076), driven by the sharp final-layer washout (F4) that depresses \emph{both} signals.
 A second criterion (M2) further requires that permutation testing distinguish python from visual pairs (python $p > 0.05$ with visual $p < 0.001$), and a joint criterion (M3) requires $\geq 3$ models to satisfy both M1 and M2 at the same layer.
 
