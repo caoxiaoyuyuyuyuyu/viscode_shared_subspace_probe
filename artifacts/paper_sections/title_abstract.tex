@@ -37,6 +37,6 @@ However, peak CKA depth is architecture-dependent (56--100\% depth), ranging fro
 
 % (4) Significance
 A pre-registered negative control (D060) formally fails: non-visual Python code yields 60--110\% of the visual cross-format CKA in magnitude at 20/21 evaluation cells, establishing that code-general structure---rather than visual-specific representations---dominates the measured alignment.
-However, a code-naive ablation (Llama-3-8B) shows that visual cross-format CKA persists without code pretraining (21/21 cells $p < 0.005$), while python--visual \emph{permutation detectability} does not (20/21 cells $p > 0.05$); python/visual magnitude ratios are comparable across both families, so the split is in statistical detectability rather than raw magnitude.
+However, a code-naive ablation (Llama-3-8B) shows that visual cross-format CKA persists without code pretraining (21/21 cells $p < 0.005$), while python--visual permutation significance splits between code-pretrained and code-naive models: Qwen family reaches significance in 9/21 cells (min-$p<0.05$, uncorrected), whereas Llama-3-8B reaches only 1/21; python/visual magnitude ratios are comparable across both families (0.60--1.11), so the split is in statistical detectability rather than raw magnitude.
 We release the complete pipeline as a methodological template, emphasizing honest reporting of weak and ambiguous findings to advance rigorous representation analysis of code LLMs beyond behavioral evaluation.
 \end{abstract}

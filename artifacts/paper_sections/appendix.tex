@@ -353,6 +353,11 @@ Qwen2.5-base & L28 & \textbf{0.030} & \textbf{0.076} & \textbf{0.39} & .236 & \t
 \end{tabular}
 \end{table}
 
+\paragraph{Multiplicity note.}
+The 9/21 significant cells reported above use per-pair permutation $p$-values without multiplicity correction across the three format pairs tested at each (model, layer) cell.
+Under Bonferroni correction for three comparisons per cell ($\alpha = 0.0167$), the Qwen family retains 2/21 significant python-X cells (Coder L4 $p{=}.015$ and L28 $p{=}.005$) versus Llama-3-8B 0/21.
+The qualitative split in detectability therefore holds under correction, though the effect size shrinks from 9/21 to 2/21.
+
 %% ========================================================================
 %% Code-Naive Baseline: Llama-3-8B
 %% ========================================================================
@@ -395,6 +400,6 @@ The TikZ--Asy $>$ SVG--Asy $>$ SVG--TikZ ordering replicates at all 7 layers, st
 In contrast, python--visual pairs are overwhelmingly non-significant (20/21 cells $p > 0.05$); the sole exception is Python--Asy at L8 ($p = 0.039$), a borderline result that does not survive multiplicity correction.
 
 We note that the equidistant protocol samples Llama-3 to L28 (87.5\% depth), missing the final layer (L31, 97\% depth) where D075's three-layer scan found the only two significant python cells.
-Thus, python--visual entanglement in code-naive Llama-3, if present, is \emph{layer-local} (present only at the deepest tested layer in D075, L31, 97\% depth), whereas in code-pretrained Qwen models, python-X significance is broader (9/21 cells $p<0.05$) with observed-to-null ratios of ${\sim}1.3$--$1.7\times$ versus Llama's $0.95$--$1.09\times$.
+Thus, python--visual entanglement in code-naive Llama-3, if present, is \emph{layer-local} (present only at the deepest tested layer in D075, L31, 97\% depth), whereas in code-pretrained Qwen models, python-X significance is broader (9/21 cells $p<0.05$, uncorrected) with observed-to-null ratios of ${\sim}1.3$--$1.7\times$ versus Llama's $0.95$--$1.09\times$.
 Importantly, the magnitude pattern is shared: Llama's python/visual CKA ratios (0.60--0.99) overlap with the Qwen range (0.60--1.11).
 The split is thus in \emph{permutation detectability}---code pretraining elevates python-X CKA above the permutation null---not in raw magnitude.
