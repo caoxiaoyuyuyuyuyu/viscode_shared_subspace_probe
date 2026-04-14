@@ -207,8 +207,8 @@ This early-layer convergence is consistent with the well-documented finding that
 Per the pre-registered D060 criterion, C1 is declared FAIL: three independent fail modes are triggered (M1 magnitude at 20/21 cells; M3 joint criterion at 0/7 layers; anti-spin window at 6 cells in L4/L8).
 The C1 result establishes that the measured cross-format CKA reflects code-general structure rather than visual-specific representations.
 
-\paragraph{Scope: code-pretrained models only.}
-An exploratory ablation with code-naive Llama-3-8B across 7 equidistant layers (Appendix~\ref{sec:llama-baseline}) reveals that while visual cross-format CKA persists at comparable magnitude (21/21 cells $p < 0.005$), the python--visual entanglement does not arise (20/21 cells $p > 0.05$; the sole exception is python--Asy at L8 with borderline $p = 0.039$).
+\paragraph{Cross-model comparison: shared magnitude, distinct permutation signature.}
+A pre-registered ablation with code-naive Llama-3-8B (D078) across 7 equidistant layers (Appendix~\ref{sec:llama-baseline}) reveals that while visual cross-format CKA persists at comparable magnitude (21/21 cells $p < 0.005$), python--visual pairs fail to reach permutation significance (20/21 cells $p > 0.05$; sole exception: python--Asy L8, $p = 0.039$).
 Following the initial exploratory observation (D075, three layers), we pre-registered confirmation criteria (D078: visual $\geq$70\% \& python $\leq$40\% significance) before the 7-layer scan; the result (visual 100\%, python 4.8\%) met these criteria.
 The C1 magnitude pattern (python-X CKA at 60--110\% of visual-X) is shared by Llama-3-8B (ratio 0.60--0.99 across 7 layers); however, Llama's python-X observations are statistically indistinguishable from the permutation baseline (obs/null $\approx$ 1.0--1.1), whereas Qwen family python-X cells reach significance in 9/21 cells.
 The split is thus in \emph{permutation detectability}, not magnitude.
@@ -283,9 +283,9 @@ An ablation with code-naive Llama-3-8B across 7 equidistant layers (Appendix~\re
 (2)~python--visual entanglement differs in statistical detectability: Qwen family python-X cells reach significance in 9/21 cells (min-$p<0.05$), whereas Llama-3-8B achieves only 1/21.
 Both families show comparable python/visual magnitude ratios (0.60--1.11), but Llama's python-X values overlap with the permutation null, indicating that the entanglement signature requires code pretraining to emerge above baseline;
 We note that the 7-layer equidistant protocol samples to L28 (87.5\% depth), missing the final layer (L31, 97\% depth) where the original three-layer scan (D075) found its only two significant python cells.
-Thus, python--visual entanglement in code-naive Llama-3, if present, is \emph{layer-local} (confined to the deepest layer at 97\% depth), whereas in code-pretrained Qwen models, python-X significance is broader (9/21 cells $p<0.05$) with observed-to-null ratios consistently above baseline.
+Thus, python--visual entanglement in code-naive Llama-3, if present, is \emph{layer-local} (present only at the deepest tested layer in D075, L31, 97\% depth), whereas in code-pretrained Qwen models, python-X significance is broader (9/21 cells $p<0.05$) with observed-to-null ratios consistently above baseline.
 This constitutes a quantitative split in detectability rather than a qualitative split in magnitude.
-The initial three-layer observation was post-hoc (D075); the 7-layer confirmation met pre-registered criteria (D078: 21/21 visual $\geq$ 70\%, 1/21 python $\leq$ 40\%).
+The initial three-layer observation was exploratory (D075); the 7-layer confirmation met pre-registered criteria (D078: 21/21 visual $\geq$ 70\%, 1/21 python $\leq$ 40\%).
 
 \paragraph{Methodological caveats.}
 The fixed sample size ($n{=}252$ triples) constrains all models to the same statistical power, which may compress inter-model differences in CKA magnitude.
