@@ -320,35 +320,35 @@ The criterion fails at 20 of 21 cells; only Qwen2.5-base at L28 passes, driven b
 \begin{table}[!ht]
 \centering
 \small
-\caption{C1 negative control magnitude comparison. Python-X = mean CKA across (python--svg, python--tikz, python--asy); Visual-X = mean CKA across (svg--tikz, svg--asy, tikz--asy). Ratio = Python-X / Visual-X. M1 criterion requires Ratio $< 0.50$; \textbf{bold} = the sole passing cell.}
+\caption{C1 negative control magnitude comparison. Python-X = mean CKA across (python--svg, python--tikz, python--asy); Visual-X = mean CKA across (svg--tikz, svg--asy, tikz--asy). Ratio = Python-X\,/\,Visual-X. M1 criterion requires Ratio $< 0.50$; \textbf{bold} = the sole passing cell. \emph{Note:} $p$-values report the minimum across three format pairs per cell (uncorrected for multiplicity).}
 \label{tab:c1_python_magnitude}
-\begin{tabular}{llcccc}
+\begin{tabular}{llccccc}
 \toprule
-Model & Layer & Py-X CKA & Vis-X CKA & Ratio & M1 \\
+Model & Layer & Py-X CKA & Vis-X CKA & Ratio & Min $p$ (Py, uncorr.) & M1 \\
 \midrule
-Coder-7B & L4  & 0.093 & 0.087 & 1.06 & fail \\
-Coder-7B & L8  & 0.088 & 0.091 & 0.98 & fail \\
-Coder-7B & L12 & 0.092 & 0.121 & 0.76 & fail \\
-Coder-7B & L16 & 0.089 & 0.141 & 0.63 & fail \\
-Coder-7B & L20 & 0.084 & 0.128 & 0.65 & fail \\
-Coder-7B & L24 & 0.092 & 0.141 & 0.65 & fail \\
-Coder-7B & L28 & 0.102 & 0.149 & 0.69 & fail \\
+Coder-7B & L4  & 0.093 & 0.087 & 1.06 & .015 & \ding{55} \\
+Coder-7B & L8  & 0.088 & 0.091 & 0.98 & .056 & \ding{55} \\
+Coder-7B & L12 & 0.092 & 0.121 & 0.76 & .033 & \ding{55} \\
+Coder-7B & L16 & 0.089 & 0.141 & 0.63 & .064 & \ding{55} \\
+Coder-7B & L20 & 0.084 & 0.128 & 0.65 & .198 & \ding{55} \\
+Coder-7B & L24 & 0.092 & 0.141 & 0.65 & .079 & \ding{55} \\
+Coder-7B & L28 & 0.102 & 0.149 & 0.69 & .005 & \ding{55} \\
 \midrule
-VisCoder2-7B & L4  & 0.093 & 0.088 & 1.05 & fail \\
-VisCoder2-7B & L8  & 0.091 & 0.095 & 0.97 & fail \\
-VisCoder2-7B & L12 & 0.099 & 0.132 & 0.75 & fail \\
-VisCoder2-7B & L16 & 0.096 & 0.143 & 0.67 & fail \\
-VisCoder2-7B & L20 & 0.086 & 0.130 & 0.66 & fail \\
-VisCoder2-7B & L24 & 0.087 & 0.145 & 0.60 & fail \\
-VisCoder2-7B & L28 & 0.091 & 0.137 & 0.66 & fail \\
+VisCoder2-7B & L4  & 0.093 & 0.088 & 1.05 & .026 & \ding{55} \\
+VisCoder2-7B & L8  & 0.091 & 0.095 & 0.97 & .048 & \ding{55} \\
+VisCoder2-7B & L12 & 0.099 & 0.132 & 0.75 & .047 & \ding{55} \\
+VisCoder2-7B & L16 & 0.096 & 0.143 & 0.67 & .049 & \ding{55} \\
+VisCoder2-7B & L20 & 0.086 & 0.130 & 0.66 & .182 & \ding{55} \\
+VisCoder2-7B & L24 & 0.087 & 0.145 & 0.60 & .065 & \ding{55} \\
+VisCoder2-7B & L28 & 0.091 & 0.137 & 0.66 & .023 & \ding{55} \\
 \midrule
-Qwen2.5-base & L4  & 0.094 & 0.085 & 1.11 & fail \\
-Qwen2.5-base & L8  & 0.087 & 0.089 & 0.98 & fail \\
-Qwen2.5-base & L12 & 0.088 & 0.112 & 0.78 & fail \\
-Qwen2.5-base & L16 & 0.079 & 0.115 & 0.68 & fail \\
-Qwen2.5-base & L20 & 0.071 & 0.109 & 0.65 & fail \\
-Qwen2.5-base & L24 & 0.075 & 0.121 & 0.62 & fail \\
-Qwen2.5-base & L28 & \textbf{0.030} & \textbf{0.076} & \textbf{0.39} & \textbf{pass} \\
+Qwen2.5-base & L4  & 0.094 & 0.085 & 1.11 & .047 & \ding{55} \\
+Qwen2.5-base & L8  & 0.087 & 0.089 & 0.98 & .103 & \ding{55} \\
+Qwen2.5-base & L12 & 0.088 & 0.112 & 0.78 & .110 & \ding{55} \\
+Qwen2.5-base & L16 & 0.079 & 0.115 & 0.68 & .127 & \ding{55} \\
+Qwen2.5-base & L20 & 0.071 & 0.109 & 0.65 & .319 & \ding{55} \\
+Qwen2.5-base & L24 & 0.075 & 0.121 & 0.62 & .242 & \ding{55} \\
+Qwen2.5-base & L28 & \textbf{0.030} & \textbf{0.076} & \textbf{0.39} & .236 & \textbf{\ding{51}} \\
 \bottomrule
 \end{tabular}
 \end{table}
