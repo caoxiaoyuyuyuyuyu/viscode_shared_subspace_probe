@@ -363,32 +363,38 @@ Qwen2.5-base & L28 & \textbf{0.030} & \textbf{0.076} & \textbf{0.39} & .236 & \t
 \paragraph{Note:} This ablation is a post-hoc exploratory analysis (D075), not a pre-registered prediction.
 
 To test whether the cross-format CKA signal requires code-specialized pretraining, we apply the same probing framework to Meta-Llama-3-8B (base), a general-purpose LLM with no code-specific training.
-We extract hidden states at three depth-equivalent layers (L4/L18/L31 out of 32, corresponding to 13\%/56\%/97\% depth) for all 252 triples and 252 Python snippets, computing CKA with 5{,}000 permutations and 1{,}000 bootstrap subsamples.
+We extract hidden states at 7 equidistant layers (L4/L8/L12/L16/L20/L24/L28 out of 32, corresponding to 12.5--87.5\% depth) for all 252 triples and 252 Python snippets, computing CKA with 5{,}000 permutations and 1{,}000 bootstrap subsamples.
 
 \begin{table}[!ht]
 \centering
 \small
-\caption{Llama-3-8B baseline CKA: visual cross-format pairs (top) and python--visual pairs (bottom). Bold $p$-values indicate $p < 0.005$.}
+\caption{Llama-3-8B baseline CKA across 7 equidistant layers: visual cross-format pairs (top) and python--visual pairs (bottom). Bold $p$-values indicate $p < 0.005$. \emph{Note:} $p$-values are per-pair permutation tests (5{,}000 permutations, uncorrected).}
 \label{tab:llama_baseline}
-\begin{tabular}{lccc}
+\begin{tabular}{lccccccc}
 \toprule
-Pair & L4 (13\%) & L18 (56\%) & L31 (97\%) \\
+Pair & L4 & L8 & L12 & L16 & L20 & L24 & L28 \\
 \midrule
-\multicolumn{4}{l}{\emph{Visual cross-format pairs}} \\
-SVG--TikZ   & 0.053 (\textbf{p=.002}) & 0.092 (\textbf{p<.001}) & 0.105 (\textbf{p<.001}) \\
-SVG--Asy    & 0.075 (\textbf{p<.001}) & 0.101 (\textbf{p<.001}) & 0.105 (\textbf{p<.001}) \\
-TikZ--Asy   & 0.126 (\textbf{p<.001}) & 0.211 (\textbf{p<.001}) & 0.202 (\textbf{p<.001}) \\
+\multicolumn{8}{l}{\emph{Visual cross-format pairs (21/21 significant, all $p < 0.005$)}} \\
+SVG--TikZ   & .053 & .071 & .078 & .090 & .092 & .089 & .088 \\
+SVG--Asy    & .075 & .082 & .087 & .103 & .093 & .089 & .093 \\
+TikZ--Asy   & .126 & .181 & .189 & .208 & .191 & .183 & .174 \\
 \midrule
-\multicolumn{4}{l}{\emph{Python--visual pairs}} \\
-Python--SVG  & 0.060 (p=.184) & 0.062 (p=.587) & 0.064 (p=.520) \\
-Python--TikZ & 0.085 (p=.182) & 0.101 (p=.161) & 0.118 (\textbf{p=.004}) \\
-Python--Asy  & 0.107 (p=.118) & 0.115 (p=.100) & 0.128 (\textbf{p=.002}) \\
+\multicolumn{8}{l}{\emph{Python--visual pairs (1/21 significant: Py--Asy L8, $p{=}.039$)}} \\
+Py--SVG  & .060 & .059 & .061 & .069 & .059 & .051 & .054 \\
+         & \scriptsize{.184} & \scriptsize{.517} & \scriptsize{.446} & \scriptsize{.435} & \scriptsize{.644} & \scriptsize{.652} & \scriptsize{.701} \\
+Py--TikZ & .085 & .098 & .103 & .102 & .094 & .084 & .087 \\
+         & \scriptsize{.182} & \scriptsize{.151} & \scriptsize{.160} & \scriptsize{.189} & \scriptsize{.130} & \scriptsize{.119} & \scriptsize{.096} \\
+Py--Asy  & .107 & .115 & .116 & .118 & .092 & .083 & .093 \\
+         & \scriptsize{.118} & \scriptsize{\textbf{.039}} & \scriptsize{.146} & \scriptsize{.221} & \scriptsize{.310} & \scriptsize{.218} & \scriptsize{.127} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Visual cross-format CKA is significant at all 9 cells ($p \leq 0.002$), with magnitudes comparable to the Qwen family (mean 0.119 vs.\ Qwen 0.119--0.154).
-The TikZ--Asy $>$ SVG--Asy $>$ SVG--TikZ ordering replicates perfectly, strengthening the token-overlap gradient (F3) as robust to the absence of code-specialized pretraining, at least for Llama-3-8B.
-In contrast, python--visual pairs are overwhelmingly non-significant (7/9 cells $p > 0.10$); only Python--TikZ and Python--Asy at L31 reach marginal significance ($p = 0.004$, $p = 0.002$), which may reflect generic final-layer feature convergence rather than meaningful cross-format structure.
+Visual cross-format CKA is significant at all 21 cells ($p \leq 0.0024$), with magnitudes comparable to the Qwen family (mean 0.116 vs.\ Qwen 0.119--0.154).
+The TikZ--Asy $>$ SVG--Asy $>$ SVG--TikZ ordering replicates at all 7 layers, strengthening the token-overlap gradient (F3) as robust to the absence of code-specialized pretraining.
+In contrast, python--visual pairs are overwhelmingly non-significant (20/21 cells $p > 0.05$); the sole exception is Python--Asy at L8 ($p = 0.039$), a borderline result that does not survive multiplicity correction.
+
+We note that the equidistant protocol samples Llama-3 to L28 (87.5\% depth), missing the final layers where D075's three-layer scan found the only two significant python cells (L31, 97\% depth).
+This suggests python--visual entanglement in code-naive models, if present, may be confined to the deepest layers.
 
 This split---visual CKA persists without code pretraining while python--visual entanglement does not---suggests that the C1 failure mode (python yielding 60--110\% of visual CKA in code-pretrained models) is specific to code-pretrained LLMs, not a general property of language models.

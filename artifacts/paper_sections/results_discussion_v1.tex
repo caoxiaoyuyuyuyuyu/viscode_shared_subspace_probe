@@ -208,7 +208,7 @@ Per the pre-registered D060 criterion, C1 is declared FAIL: three independent fa
 The C1 result establishes that the measured cross-format CKA reflects code-general structure rather than visual-specific representations.
 
 \paragraph{Scope: code-pretrained models only.}
-An exploratory ablation with code-naive Llama-3-8B (Appendix~\ref{sec:llama-baseline}; D075, post-hoc) reveals that while visual cross-format CKA persists at comparable magnitude (9/9 cells $p < 0.005$), the python--visual entanglement does not arise (7/9 cells $p > 0.10$).
+An exploratory ablation with code-naive Llama-3-8B across 7 equidistant layers (Appendix~\ref{sec:llama-baseline}; D075, post-hoc) reveals that while visual cross-format CKA persists at comparable magnitude (21/21 cells $p < 0.005$), the python--visual entanglement does not arise (20/21 cells $p > 0.05$; the sole exception is python--Asy at L8 with borderline $p = 0.039$).
 This indicates that the C1 failure mode---where python code yields 60--110\% of visual CKA---is specific to code-pretrained LLMs, not a general property of language models.
 
 \subsection{Robustness Checks}
@@ -276,10 +276,10 @@ The pre-registered C1 negative control (\S\ref{sec:c1}) further constrains inter
 This establishes that code-general structure---rather than visual-specific representations---dominates the measured alignment.
 
 \paragraph{Split hypothesis (exploratory, D075).}
-An ablation with code-naive Llama-3-8B (Appendix~\ref{sec:llama-baseline}) suggests a two-track interpretation:
+An ablation with code-naive Llama-3-8B across 7 equidistant layers (Appendix~\ref{sec:llama-baseline}) suggests a two-track interpretation:
 (1)~visual cross-format CKA persists at comparable magnitude without code pretraining (9/9 cells $p < 0.005$), indicating that visual code formats share representational structure in general-purpose LLMs;
-(2)~python--visual entanglement is substantially stronger in code-pretrained models: Qwen family python-X CKA reaches 60--110\% of visual-X magnitude (D060), whereas Llama-3-8B python-X cells are overwhelmingly non-significant (7/9 cells $p > 0.10$), suggesting that the C1 failure mode is a code-pretraining artifact.
-The marginal significance of Python--TikZ and Python--Asy at Llama's final layer ($p = 0.004$, $p = 0.002$) may reflect generic final-layer feature convergence rather than meaningful cross-format structure.
+(2)~python--visual entanglement is substantially stronger in code-pretrained models: Qwen family python-X CKA reaches 60--110\% of visual-X magnitude (D060), whereas Llama-3-8B python-X cells are overwhelmingly non-significant (20/21 cells $p > 0.05$; sole exception: python--Asy L8, $p = 0.039$), suggesting that the C1 failure mode is a code-pretraining artifact.
+We note that the 7-layer equidistant protocol samples to L28 (87.5\% depth), missing the final layers where the original three-layer scan (D075) found its only two significant python cells (L31, 97\% depth); python--visual entanglement in code-naive models, if present, may thus be confined to the deepest layers.
 This observation is post-hoc and exploratory; confirmation requires pre-registered replication across additional code-naive architectures.
 
 \paragraph{Methodological caveats.}
