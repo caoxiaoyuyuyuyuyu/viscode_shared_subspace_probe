@@ -43,7 +43,7 @@ np.seterr(over="raise", invalid="raise")
 MODEL_NAME = "NousResearch/Meta-Llama-3-8B"
 MODEL_LOCAL_PATH = "/root/autodl-tmp/models/Meta-Llama-3-8B"
 MODEL_TYPE = "base"  # not instruct — plain caption + "\n" prompt
-LAYERS = [4, 18, 31]  # depth ~13%, 56%, 97% of 32 layers
+LAYERS = [4, 8, 12, 16, 20, 24, 28]  # 7 equidistant layers matching Qwen protocol
 HIDDEN_DIM = 4096
 MAX_SEQ_LEN = 4096
 N_TRIPLES = 252
