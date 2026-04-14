@@ -1,4 +1,13 @@
-artifacts/
+artifacts/*
+!artifacts/paper_sections/
+artifacts/paper_sections/*.aux
+artifacts/paper_sections/*.log
+artifacts/paper_sections/*.blg
+artifacts/paper_sections/*.out
+artifacts/paper_sections/*.bbl
+artifacts/paper_sections/*.synctex*
+artifacts/paper_sections/compile_diagnosis.txt
+artifacts/paper_sections/main.pdf
 checkpoints/
 data_snapshots/
 study-packages/
