@@ -394,6 +394,7 @@ Visual cross-format CKA is significant at all 21 cells ($p \leq 0.0024$; mean 0.
 The TikZ--Asy $>$ SVG--Asy $>$ SVG--TikZ ordering replicates at all 7 layers, strengthening the token-overlap gradient (F3) as robust to the absence of code-specialized pretraining.
 In contrast, python--visual pairs are overwhelmingly non-significant (20/21 cells $p > 0.05$); the sole exception is Python--Asy at L8 ($p = 0.039$), a borderline result that does not survive multiplicity correction.
 
-We note that the equidistant protocol samples Llama-3 to L28 (87.5\% depth), missing the final layers where D075's three-layer scan found the only two significant python cells (L31, 97\% depth).
-Thus, python--visual entanglement in code-naive Llama-3, if present, is \emph{layer-local} (confined to the deepest 1--2 layers at 97\% depth), whereas in code-pretrained Qwen models it is \emph{layer-general} (significant across the full depth range).
-This constitutes a quantitative split in extent rather than a qualitative split in presence, and suggests that the C1 failure mode (python yielding 60--110\% of visual CKA in code-pretrained models) is specific to code-pretrained LLMs, not a general property of language models.
+We note that the equidistant protocol samples Llama-3 to L28 (87.5\% depth), missing the final layer (L31, 97\% depth) where D075's three-layer scan found the only two significant python cells.
+Thus, python--visual entanglement in code-naive Llama-3, if present, is \emph{layer-local} (confined to the deepest layer at 97\% depth), whereas in code-pretrained Qwen models, python-X significance is broader (9/21 cells $p<0.05$) with observed-to-null ratios consistently above baseline.
+Importantly, the magnitude pattern is shared: Llama's python/visual CKA ratios (0.60--0.99) overlap with the Qwen range (0.60--1.11).
+The split is thus in \emph{permutation detectability}---code pretraining elevates python-X CKA above the permutation null---not in raw magnitude.
