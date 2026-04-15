@@ -389,8 +389,8 @@ agent-ml-research MCP 工具集包含 `register_cron` / `reconcile_crons` / `pol
 
 ## 2026-04-13 AutoDL 同实例 2× 事件（reboot vs hotplug 区分）
 
-**事件 1: 19:44 CST — 实例自发 reboot（真 reboot）**
-- 证据：PID1=boot.sh STIME=19:44, supervisord STIME=19:44, host uptime 从 66 天归零
+**事件 1: 19:44 CST — 容器自发 restart（非 host reboot）**
+- 证据：/proc/1 PID1=boot.sh STIME=19:44（容器 init 新 spawn），supervisord STIME=19:44；host /proc/uptime ≈66 天未变化（host kernel 未重启）
 - 性质：自发，根因待查（可能 AutoDL 宿主机调度 / panic / OOM-killer）
 - 影响：所有 python 进程 SIGKILL，包括 p1_python_neg_pid4048_v3 / v3_recompute_pid4356（若 mtime 确认落在窗口）
 
@@ -446,3 +446,106 @@ Reviewer 发现 `negative_control_cka.py` resume 逻辑 else 分支未重置 don
 - Director 决策 D063: subsampling v4 rerun 数据 pipeline 和 estimator spec 预冻结（raw per-cell CKA + n=50 stress + HSIC unbiased supplementary）
 
 **注**：本 memory.md 曾在 14:32 被误以占位符覆盖（Worker save_project_file 操作失误），随后立即用 read_project_file 提前拿到的完整副本 + 本节 append 进行恢复；个别章节（"2026-04-13T14:15 ROADMAP 修正" 内部 Task 1/2/3 草稿细节）因篇幅精简，完整草稿以 git 历史 / decisions.yaml / rebuttal preflight Worker 产出为准。
+
+## 2026-04-13 paper finalization TODO（Phase 3 cleanup）
+
+**TODO(Phase 3): undef refs/cites** — draft_v2 合并到 `_project/paper/` 后，11 处 draft 引用了 _project/paper 缺失的 label/bibkey，渲染出 ?? / [?]：
+- Labels: `sec:clip-pilot`, `fig:cka_layer`, `tab:hsic_unbiased`, `tab:r2_corr`, `sec:robustness-token`, `sec:results-disentangle`, `tab:cka_mean` (×2)
+- Citation: `song2012hsic-unbiased` (×3, in results_discussion_v1.tex Discussion 段)
+- 处理时机：v5 done + C1 Phase 1 替换后的 paper finalization Phase 3
+- 策略：要么在对应 section 补 `\label{}` / 补 bib 条目，要么删掉 draft 里引用这些 label 的行
+- 不阻塞用户当前审阅 pdf（16 页版本）
+
+**merge Worker 已处理**：
+- 删除孤儿 `_project/paper/method.tex`（单数，main.tex 不 include）
+- 重写 `conclusion.tex`（原 Apr 12 旧版与合并后 Discussion 段重叠，改写为 3 段精简 take-away，引用 \S{sec:discussion} + \S{sec:limitations}，避免 claim 复述）
+
+**TODO(finalization Worker, v5 done 后)**: fig4/fig5 revival + primary 数据 SSH 拉取
+
+**Why**: Phase V 已修 fig3 为 42-cell k_min 分布（registry aggregate），删除 fig4 pilot 版本；但本地无 `format_residualized_cka_full_v2` primary per-cell residualized CKA 数据，fig4（raw vs residualized per-layer 6 模型）无法重画。v5 retry DONE 后的 negative_control_cka.json 是 fig5（C1 control）数据源。两图都延后到 finalization Worker 统一处理。
+
+**How to apply**:
+- Phase 0.5（merge 完 / C1 替换前）：SSH `autodl-viscode-probe` rsync 远端 `/root/autodl-tmp/viscode_shared_subspace_probe/artifacts/format_residualized_cka_full_v2/` primary 数据（白名单 JSON/CSV/MD，禁 .pt/.safetensors/hidden_states），写本地 `artifacts/format_residualized_cka_full_v2/data/`
+- Phase 1.5（C1 判定 + results_partial.tex 替换完）：基于 v5 的 negative_control_cka.json 画 fig5（SVG/TikZ/Asy vs Python CKA 对比柱状图或曲线），插回 results §C1，label `fig:python_neg`
+- Phase 4（assemble 重编前）：基于 Phase 0.5 primary 数据重画 fig4 `raw vs residualized CKA per-layer (6 models)`，插回 results §F2 首部，label `fig:resid_cka`，整体图编号重排 1→5
+- 最终 pdf 目标：5 张图（fig1 pipeline + fig2 cka_layer + fig3 k_min dist + fig4 resid_cka + fig5 python_neg）
+
+## Audit / Recompile Worker DoD（2026-04-13 沉淀）
+
+凡涉及 LaTeX 编译的 audit / recompile / fix worker，完成前必须：
+1. `grep -E "undefined|Warning.*Reference|Warning.*Citation|Missing" main.log` 返回 0 行
+2. `pdftotext main.pdf - | grep -c "??"` 以及 `grep -c "\[?\]"` 都 = 0
+3. 重编后 pdf 页数 / 字数 / 体积做 sanity diff，异常（>20% 偏差）必须解释
+4. 贴编译原始 log 尾 30 行作为证据
+
+缺任一项 = silent pass violation，Worker 必须报 FAIL 而非 done。
+Agent 收到 Worker 返回后先按此 DoD QA，不满足立即重派。
+
+**触发规则**：
+- 2026-04-13 16:41 `worker_acl_template_alignment_audit_*`（非 strict 版）返回单行结论 walltime 2min，Reviewer 抓到未检查 main.log，pdf 留 9 处 undef refs/cites
+- 根因：Worker prompt DoD 未明确要求 log 检查；此条沉淀补上制度缺口
+
+## Audit Worker Scope 显式声明规则（2026-04-13 沉淀）
+
+派 audit worker 时，Director / Main Agent 指令里必须**显式声明 scope 边界**，例如：
+- `audit scope: ACL template alignment only (acl.sty version + preamble options + lineno config)`
+- `audit scope: cross-ref integrity + citation completeness (\ref / \cite 全扫)`
+- `audit scope: ACL template + cross-ref + citation`（联合）
+
+**没声明 scope → Reviewer 可能用更宽标准复核，导致 worker 被判"漏审"**。
+
+**触发来源**：`worker_acl_template_alignment_audit_*` 返回"ACL 对齐无修改"，但被 Reviewer 按 cross-ref completeness 判 critical 8+ undef refs。实际上 audit worker 的 scope 只是 template，不是 cross-ref —— 但 dispatch 指令里没显式写，造成 scope 歧义。
+**规则补强**：后续所有 audit worker prompt 第一行必须有 `## Scope` 节明示边界，Reviewer / Agent QA 按该 scope 评判，不跨 scope 判 FAIL。
+
+## 2026-04-13 v5 retry CKA 诊断 Worker 误诊事件（Director 紧急撤回）
+
+**触发**：v5 retry 主实验 `p1_python_neg_v5_gpu_retry` 进入 CKA 分析阶段后，前一 Worker 对 PID 5429（负控制 CKA bootstrap 进程）做诊断，错判为"死循环 + 零产出 + stdout 死管道 + PPid=1 故障"并建议 `kill -9`。Director 独立核验推翻所有四条并紧急撤回。
+
+**Worker 误诊 4 点 vs 核验真相**：
+| Worker 判断 | 核验真相 |
+|---|---|
+| %CPU=2792% 死循环 | 28 核并行 CKA bootstrap 正常特征，STAT=Rl = compute-bound |
+| 零 GPU = 故障 | CKA 分析阶段用 CPU，不需要 GPU（预期行为）|
+| 零产出 | 真实输出 `outputs/negative_control/negative_control_cka.json` 28KB 20:23 UTC 仍在写 — Worker 查错目录 |
+| stdout 死管道 | 真实日志 `/root/autodl-tmp/logs/negative_control.log` 正在写 qwen25 L20 li=4/6 — Worker 没查实际日志 |
+| PPid=1 = 故障 reparent | nohup+disown 后 init 收养的**标准**行为 |
+
+**根因（Worker 侧）**：
+1. **路径幻觉**：没先 `ls outputs/negative_control/` 就断言零产出
+2. **POSIX 基础误解**：PPid=1 是 nohup/disown/setsid 的教科书式 reparent，不是故障信号
+3. **诊断线性断裂**：没查实际日志路径 `/root/autodl-tmp/logs/negative_control.log`，只看 launcher stdout
+4. **CPU/GPU 工作负载区分缺失**：CKA bootstrap 是 CPU 任务，用 GPU 利用率做存活指标是类别错误
+
+**本会话动作**：
+1. ❌ 未执行任何 kill（新 session 初始化阶段 Director 撤回先到）
+2. 前 Worker 诊断报告标记 **INVALIDATED**，不作为后续决策依据
+3. 不干预 PID 5429，等 qwen25 L20 li=4/6 剩余 ~20-25min 自然完成
+4. 让 cron `on-experiment-done` 正常触发
+
+**诊断规则补强**（写入本节，后续所有 process-alive 诊断 Worker 必须遵守）：
+
+1. **"零产出" 判定前必须**：
+   - `ls -la <claimed_output_dir>` 显式列目录
+   - `find <project_root> -name '*.json' -newer <start_time>` 全盘扫描近 mtime 文件
+   - 不能只看 launcher stdout，必须检查任务 spec 里声明的输出路径
+
+2. **stdout/stderr 死管道 ≠ 进程死亡**：nohup+disown 后 stdout 指向 /dev/null 或被 launcher 重定向是常态。判存活的权威信号：
+   - `kill -0 <PID>` 返回 0（进程存在）
+   - `ps -o stat=` 返回 R/S/D（非 Z/T/X）
+   - `/proc/<PID>/io` 的 `write_bytes` 递增（正在写文件）
+   - 真实 log 文件 mtime 最近几分钟内更新
+
+3. **PPid=1 是 reparent 标准行为**，不是故障。nohup / disown / setsid / daemonize 都会导致 reparent 到 init。判故障看 STAT 和 /proc 状态，不看 PPid。
+
+4. **CPU-only 任务用 GPU 利用率做存活指标 = 类别错误**。诊断前必须先确认任务阶段：
+   - 模型 load / forward / gradient → GPU
+   - CKA bootstrap / permutation / statistical reduction / sklearn / numpy 线性代数 → CPU
+   本项目 CKA / HSIC / PWCCA 均为 CPU-bound。
+
+5. **高 %CPU（>1000%）在多核服务器上是正常并行特征**，不是死循环。死循环判定需结合 `strace -p <PID>` 看 syscall 模式 + 日志 mtime 停滞 + 无文件写入，三者齐备才算。
+
+6. **Worker 诊断报告必须附"证据路径清单"**：ls / cat / stat / kill -0 的原始命令 + 输出必须可回溯。仅凭"我看了 ps 所以怎样"不接受。
+
+**Why**：此次误诊若未被 Director 拦截，会直接 kill 掉正在接近完成的 CKA 分析任务，造成 20 min 无用功 + 后续重跑。诊断 Worker 的判断错误直接映射到 destructive action，属于最高风险类别。
+
+**How to apply**：所有"存活性 / 健康度诊断" 类 Worker prompt 顶部必须贴此 6 条 checklist，Worker 返回必须逐条附证据，Agent QA 时按 checklist 验证，缺项直接判 FAIL 重派。

@@ -1,0 +1,2441 @@
+baseline: null
+experiments:
+  stage0_env_setup:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-10T15:20:38.799Z'
+    updated_at: '2026-04-10T17:53:32.304Z'
+    hypothesis: Stage 0 v5 环境搭建：5 模型 HF snapshot_download 后台任务 (Qwen2.5-7B, Qwen2.5-Coder-7B-Instruct,
+      TIGER-Lab/VisCoder2-7B, xingxm/LLM4SVG-3B, Qwen3-Coder-30B-A3B-Instruct + CLIP-L
+      + sbert sidecars)
+    reproduce:
+      finished_at: '2026-04-10T17:26:53.215Z'
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-10T17:26:53.301499+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-10T17:26:54.228405+00:00'
+    notes: '[2026-04-10T17:53Z verification-first diagnose 完成] D007 Reviewer 七审 critical：(1)
+      数据盘 79G 100% 满；(2) v5 脚本同时设 HF_HOME+cache_dir 导致 hub/ 与非 hub/ 两棵树并存，blob 重复约
+      43GB；(3) 5/7 模型未真实完整下载；(4) report.md 凭 PID 8251 写已就绪但 PID 早退；(5) cron on_failed
+      在 17:26:53 误触发 autodl_release（实例实际未被释放，SSH 17:53 仍通）。Director 紧急冻结原 D007 rm
+      指令，执行 verification-first 协议（物理证据 + CPU 双副本烟测）。烟测结果：Qwen2.5-7B 两棵树都加载 OK 7.6156B；Qwen2.5-Coder-7B-Instruct
+      仅 nonhub 加载 OK 7.6156B（hub 缺 model-00002 等 3 文件）；VisCoder2-7B 两树都缺 model-00001..00003.safetensors→
+      NEITHER usable；Qwen3-Coder-30B-A3B-Instruct 只下了 7 个 metadata 小文件，0 weight→ NEITHER
+      usable；xingxm/LLM4SVG-3B 两树都缺 config.json+任何 weight，hub 下到的是 accelerate state
+      checkpoint→ repo 选型存疑（spec bug，不只是磁盘问题）。权威副本判定：Qwen2.5-7B→nonhub；Qwen2.5-Coder-7B-Instruct→nonhub；其余
+      3 个均需重新下载（且 30B fp16 60G 装不下 79G 数据盘，必须改量化或砍掉）。推荐 rm 路径 R1..R8 dry-run 列在 outputs/diagnose_20260410T172755.md，预计回收
+      ~52GB，Director 批准前**禁止任何 rm**。详见 art_20260410_0cb22a。'
+    metrics:
+      v5_download_pid: 8251
+      disk_usage_pct_after_freeze: 100
+      disk_total_gb: 79
+      models_complete_loadable: 2
+      models_attempted: 7
+      qwen25_7b_params_B: 7.6156
+      qwen25_coder_7b_params_B: 7.6156
+      viscoder2_7b_status: INCOMPLETE_BOTH_TREES
+      qwen3_coder_30b_status: WEIGHTS_NOT_DOWNLOADED
+      llm4svg_3b_status: WRONG_REPO_TYPE_NO_CONFIG
+      incomplete_blob_count: 26
+      dual_tree_redundant_gb_estimated: 43
+  stage0_code_prep:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-10T15:20:40.980Z'
+    updated_at: '2026-04-10T15:20:40.980Z'
+    hypothesis: 代码准备：dual-stack sanity + mini pilot + sbert matching 脚本 + pre_reg
+      v3.2 落盘
+  stage0_sanity:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-10T16:24:02.816Z'
+    updated_at: '2026-04-10T16:24:04.182Z'
+    hypothesis: 'Dual-stack sanity: vLLM gen + HF teacher-forcing hidden states with
+      Qwen3-Coder-30B-A3B'
+  stage0_env_setup_v6:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-10T18:31:45.675Z'
+    updated_at: '2026-04-10T18:32:29.982Z'
+    hypothesis: Stage 0 v6 重启：R1-R8 cleanup（含 R1 反向修订 + R2 mv-promotion）+ 3 模型重下 +
+      D011 NW2 边下边烟测 + 5 模型 repo_id 标准路径验证。验证 hub/ 标准布局可被 vLLM/HF 通过 repo_id 解析。
+    parent: stage0_env_setup
+    metrics:
+      disk_usage_pct_before_cleanup: 100
+      disk_free_gb_after_cleanup: 51
+      disk_free_gb_after_redownload: 37.3
+      disk_used_pct_after_redownload: 56
+      models_verified_count: 5
+      models_total: 5
+      qwen25_7b_params_B: 7.6156
+      qwen25_coder_7b_params_B: 7.6156
+      viscoder2_7b_params_B: 7.6156
+      clip_l_params_B: 0.4276
+      sbert_params_B: 0.0227
+      a8_deadline_utc: '2026-04-10T20:00:00Z'
+      cleanup_minutes: 5
+      redownload_minutes: 19
+      viscoder2_dl_minutes: 11
+    notes: 'R1 路径反向（删非hub/Qwen2.5-7B保留hub/）+ R2 mv-promotion（hub/残缺Coder删后非hub/完整Coder
+      mv到hub/）。R3-R8 删 VisCoder2/LLM4SVG/Qwen3-Coder 全副本+.locks。3 模型重下 D011 NW2 边下边烟测
+      PASS（sbert→CLIP→VisCoder2 size-ascending）。5/5 repo_id 标准路径烟测 PASS。LLM4SVG/Qwen3-Coder
+      D007 砍决策已落地。Step 6 deviation: cleanup 终态 51G < 60G threshold，但已无可清空间（30G 为两份保留模型不可压缩），已验证后续
+      redownload 充裕：post-redownload free=37.3G 满足 Stage 0 后续实验。Anomalies: (1) Step
+      6 disk threshold deviation justified, (2) endpoint fallback 未触发（hf-mirror.com
+      全程稳定 ~5-12 MB/s）, (3) 所有参数偏差 ≤3.24% 远低于 5% 阈值。'
+    conclusion: success
+  stage0_dual_stack_sanity:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-10T18:50:24.627Z'
+    updated_at: '2026-04-10T22:08:30.072Z'
+    parent: stage0_env_setup_v6
+    hypothesis: '5-phase dual-stack sanity: dual_stack consistency, sbert matching,
+      mini pilot 3x3x10, CLIPScore SNR gate, A1 power simulation'
+    conclusion: failed
+    metrics:
+      p1_vllm: PASS
+      p1_hf: PASS
+      p1_hf_layers: 28
+      p1_hf_hidden_dim: 3584
+      p1_hf_pooled_norm: 65.4231
+      p1_status: PASS
+      p3_valid_cells: 9/9
+      p3_overall_valid: 88/90
+      p3_status: PASS
+      p3_coder_svg: 10/10
+      p3_coder_tikz: 10/10
+      p3_coder_asy: 10/10
+      p3_viscoder2_svg: 10/10
+      p3_viscoder2_tikz: 10/10
+      p3_viscoder2_asy: 10/10
+      p3_qwen25_svg: 9/10
+      p3_qwen25_tikz: 8/10
+      p3_qwen25_asy: 1/10
+      p3_root_cause_fixed: 'stop token bug fixed: format-specific stops (SVG: </svg>,
+        TikZ: \end{tikzpicture}, Asy: none). Coder rerun 30/30.'
+      p3_throughput_steady_tok_s: 87.4
+      p3_coder_rerun_artifact: outputs/sanity/p3_coder_rerun_results.json
+      p4_n20_snr: 1.0649
+      p4_n20_status: MARGINAL
+      p5_power_rho030: 0.218
+      p5_status: accepted_per_D012
+      nw2_total_gb: 8.6
+      nw2_gate: PASS
+      datasets_downloaded: 6
+      disk_free_gb: 18
+    notes: 'P3 FINAL (stop token fix verified): 9/9 cells PASS, 88/90 valid. Coder
+      rerun 30/30 after fix (SVG: </svg>, TikZ: \end{tikzpicture}, Asy: none). Steady
+      throughput 87.4 tok/s. Artifact: outputs/sanity/p3_coder_rerun_results.json.
+      Previous 6/9 was due to stop=["```"] bug. P1 PASS. P4 MARGINAL (SNR=1.06). P5
+      accepted (D012). NW2 PASS (8.6G, 6 datasets downloaded).'
+  stage_a_vllm:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-10T21:24:01.500Z'
+    updated_at: '2026-04-12T10:50:52.149Z'
+    hypothesis: Stage A vLLM 行为生成：3 models × 3 formats × 200 prompts × 2 shots = 3600
+      次推理。Eval pool test splits + CLIPScore hybrid eval (Color/Shape/Stroke → CLIP,
+      Quadrant/Spatial → attribute-match)。含 datasets 下载、P2 sbert matching、前 50 样本
+      validity+CLIPScore gate。
+    parent: stage0_dual_stack_sanity
+    notes: '## Stage A vLLM 状态 (04-11 03:46 UTC, post-2GPU)
+
+
+      **资源升级**: 1 GPU → 2× RTX PRO 6000 96GB (cuda:0 + cuda:1, 各 97GB free, 0% util)
+
+
+      **前置步骤状态**:
+
+      - ✅ Eval pool D020+D021: SVG/TikZ/Asy 各 200, art_20260411_e93b99
+
+      - ✅ step2 D022 SBERT: 已完成 252/500 triples (实例重启前自然落盘), mean_cos=0.7288, outputs/stage_a/sbert_triples.json
+      + step2_report.json. D023 接受 N=252 作 D017 fallback.
+
+      - ⏳ Stage A vLLM gen: 待 Director 批准 2-GPU 方案后启动
+
+
+      **2-GPU 规划** (art_20260411_aac67b):
+
+      - 推荐方案 A: data-parallel + 模型串行 (2 进程各占一张 GPU, prompt id % 2 切分, 3 模型顺序加载-卸载)
+
+      - 加速比 1.97x: 5.0h → 2.55h gen
+
+      - 需新写 scripts/stage_a_gen.py (p3_rerun_verified 不能复用: prompt 硬编码 + 无 shard 参数
+      + 无 n_shots)
+
+      - 磁盘清理: 保守 3G (VCM-679k cache + HF locks) → free 21G ≥ 19G 门槛
+
+
+      **已知阻塞**:
+
+      1. resources.yaml 中 cuda:1 仍 config_available=false, 需 Director 注册或 Worker 用
+      CUDA_VISIBLE_DEVICES 脚本侧调度
+
+      2. 实例最近重启 (uptime ~2 min), 所有用户进程已消失但 step2 落盘前已完成
+
+
+      **待 Director 批准事项**: 见 art_20260411_aac67b §7'
+    server: autodl-viscode-probe
+    gpu: ''
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0
+      started_at: '2026-04-10T21:26:19.338Z'
+    metrics:
+      eval_pool_svg: 200
+      eval_pool_tikz: 200
+      eval_pool_asy: 200
+      eval_pool_build: SUCCESS
+      eval_pool_artifact: art_20260411_e93b99
+      svg_sha256: d3e08d74...cc0d1832
+      tikz_sha256: 0f3b353e...aad9de57
+      asy_sha256: cd0d0564...4d409799
+      step2_triples: 252
+      step2_target: 500
+      step2_threshold: 0.7
+      step2_mean_cosine: 0.7288
+      step2_median_cosine: 0.7199
+      step2_min_cosine: 0.7
+      step2_max_cosine: 0.8447
+      step2_p25_cosine: 0.7084
+      step2_unique_tikz: 252
+      step2_unique_asy: 252
+      step2_svg_sampled: 50000
+      step2_tikz_sampled: 52390
+      step2_asy_sampled: 22539
+    conclusion: success
+  stage_a_gen:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-11T05:10:00.260Z'
+    updated_at: '2026-04-15T02:57:58.039Z'
+    parent: stage_a_vllm
+    hypothesis: Stage A vLLM gen 全量：3 models × 3 formats × 200 prompts × n_shots=2
+      = 3600 sample。2-GPU data-parallel (prompt_id 切分)。新 stage_a_gen.py 脚本，T=0.3,
+      top_p=default(1.0), per-format max_tokens (SVG/TikZ=1024, Asy=2048), stop tokens
+      来自 p3_coder_rerun.py，SamplingParams n=2 共享 prefix KV，双 seed 防退化。
+    notes: 审批超时（48h）
+    server: autodl-viscode-probe
+    gpu: ''
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0,cuda:1
+      started_at: '2026-04-11T05:46:26.591Z'
+      command: "mkdir -p /root/autodl-tmp/viscode_shared_subspace_probe/artifacts/stage_a/gen_v1\
+        \ /root/autodl-tmp/viscode_shared_subspace_probe/artifacts/stage_a/logs/gen_v1\
+        \ && cat > /root/autodl-tmp/viscode_shared_subspace_probe/scripts/launch_stage_a_gen_v1.sh\
+        \ <<'LAUNCHER_EOF'\n#!/bin/bash\nset -e\ncd /root/autodl-tmp/viscode_shared_subspace_probe\n\
+        source venv/bin/activate\nexport HF_HUB_OFFLINE=1\nLOG_DIR=/root/autodl-tmp/viscode_shared_subspace_probe/artifacts/stage_a/logs/gen_v1\n\
+        OUT_BASE=/root/autodl-tmp/viscode_shared_subspace_probe/artifacts/stage_a/gen_v1\n\
+        echo \"[launcher] start $(date -u +%FT%TZ) commit=$(git rev-parse --short\
+        \ HEAD)\" >> $LOG_DIR/master.log\nfor MODEL in viscoder2 coder qwen25; do\n\
+        \  mkdir -p $OUT_BASE/$MODEL\n  for FMT in svg tikz asy; do\n    echo \"[launcher]\
+        \ === $MODEL $FMT begin $(date -u +%FT%TZ) ===\" >> $LOG_DIR/master.log\n\
+        \    python scripts/stage_a_gen.py --model $MODEL --format $FMT --shard-id\
+        \ 0 --num-shards 2 --gpu 0 --n-shots 2 --out-dir $OUT_BASE/$MODEL > $LOG_DIR/${MODEL}_${FMT}_s0.log\
+        \ 2>&1 &\n    PID0=$!\n    python scripts/stage_a_gen.py --model $MODEL --format\
+        \ $FMT --shard-id 1 --num-shards 2 --gpu 1 --n-shots 2 --out-dir $OUT_BASE/$MODEL\
+        \ > $LOG_DIR/${MODEL}_${FMT}_s1.log 2>&1 &\n    PID1=$!\n    echo \"$(date\
+        \ -u +%FT%TZ) $MODEL $FMT shard0=$PID0 shard1=$PID1\" >> $LOG_DIR/pids.txt\n\
+        \    wait $PID0 $PID1\n    echo \"[launcher] === $MODEL $FMT done $(date -u\
+        \ +%FT%TZ) ===\" >> $LOG_DIR/master.log\n  done\ndone\necho \"[launcher] ALL\
+        \ DONE $(date -u +%FT%TZ)\" >> $LOG_DIR/master.log\nLAUNCHER_EOF\nchmod +x\
+        \ /root/autodl-tmp/viscode_shared_subspace_probe/scripts/launch_stage_a_gen_v1.sh\
+        \ && bash /root/autodl-tmp/viscode_shared_subspace_probe/scripts/launch_stage_a_gen_v1.sh"
+      code_commit: a49fc356e129fb67e86e1ce0f2ca2a4e6db96e0a
+      finished_at: '2026-04-11T05:50:12.234Z'
+      training_hours: 0.06
+    pid: unknown
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_a_gen.log
+    conclusion: killed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-11T05:50:12.330078+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-11T05:50:13.052982+00:00'
+  stage_a_gen_v2:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-11T06:10:56.007Z'
+    updated_at: '2026-04-12T10:50:31.988Z'
+    parent: stage_a_gen
+    hypothesis: 'Stage A vLLM gen 全量 v2: 3 models × 3 formats × 200 prompts × n_shots=2
+      = 3600 sample, 2-GPU data-parallel (prompt_id 切分). 参数: T=0.3, top_p=default(1.0),
+      n=2 SamplingParams shared prefix KV, per-format max_tokens (SVG/TikZ=1024, Asy=2048),
+      stop tokens 来自 p3_coder_rerun.py. v1 launcher infra failure (venv path + sync_code
+      stale + missing offline envs + missing network_turbo). v2 fix: launcher v2 with
+      conda activate base + 4 offline env vars (HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE/HF_DATASETS_OFFLINE/HF_HUB_DISABLE_TELEMETRY)
+      + exec tee redirect + fail-fast quad guards (FAIL_99/97/96/95) + inline `git
+      fetch + reset --hard origin/main` + `source /etc/network_turbo`. Anchored on
+      /root/miniconda3/bin/python base env (vllm 0.19.0 + torch 2.10.0+cu128). Real-jsonl
+      dry-run validated 4 hard conditions (no HF retry / vLLM progress visible / jsonl
+      produced / wallclock 57.9s < 10min). Commit: 2a0c69a.'
+    notes: '## ⛔ FAILED — Pre-reg deviation (D024 n_shots semantic mismatch) — KILLED
+      2026-04-11 ~06:57 UTC
+
+
+      **KILL reason**: Reviewer audit verdict (8 independent evidence chains):
+
+      - pre-reg v3.4 §3 + §8 + IDEA_BRIEF.md line 42 三层文档独立指定 "0-shot vs 3-shot regimes"
+      (in-context learning)
+
+      - D024 silently re-interpreted n_shots as "vLLM SamplingParams n=2 stochastic
+      samples" (per-prompt resampling) — silent design swap, no rationale logged
+
+      - D024 "笔误修正" annotation actually referred to T=0.7→0.3, NOT n_shots
+
+      - Current stochastic n=2 data CANNOT be used for headline 24-cell rank ρ — measures
+      stochastic variance, not cross-format transfer
+
+
+      **Sunk cost**: ~3 GPU-hours accepted as sunk cost. Director KILL instruction
+      at T+~33min after submit.
+
+
+      **Kill confirmation (worker 06:58 UTC)**:
+
+      - tmux kill-session + orphan PIDs (13278, 13281, 12733, 12734) all TERM''d and
+      confirmed dead
+
+      - GPU 0: 0 MiB used, 97253 MiB free; GPU 1: 0 MiB used, 97253 MiB free — both
+      fully released
+
+      - Partial artifacts archived to `artifacts/stage_a/_DEPRECATED_D024_DEVIATION/{gen_v2,
+      logs_gen_v2}/` with README. **DO NOT use for analysis.**
+
+
+      **Next step**: Awaiting Director decision among Reviewer-proposed options:
+
+      - (I) eval pool rebuild + ICL prompt template for true 0-shot/3-shot
+
+      - (II) D025 explicit deviation log re-justifying stochastic n=2
+
+      - (III) third path'
+    server: autodl-viscode-probe
+    gpu: ''
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0,cuda:1
+      started_at: '2026-04-11T06:13:40.653Z'
+      command: bash scripts/launch_stage_a_gen_v2.sh
+      code_commit: 2a0c69af3b945821cdd245ce9bfa2db3ea6b8009
+    pid: '12631'
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_a_gen_v2.log
+    conclusion: failed
+  stage_a_gen_v3:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-11T08:11:46.245Z'
+    updated_at: '2026-04-11T11:00:12.821Z'
+    parent: stage_a_gen_v2
+    hypothesis: 'Stage A vLLM gen v3 (D025): 0-shot/3-shot ICL regimes, n=1 per prompt,
+      independent exemplar source. 3 models × 3 formats × 200 prompts × 2 shot regimes
+      = 3,600 generations. T=0.3, top_p=1.0, per-format max_tokens (SVG/TikZ=1024,
+      Asy=2048). ICL exemplars from independent training data (排除 eval pool + probe
+      pool). Data-parallel 2 GPU.'
+    server: autodl-viscode-probe
+    notes: '## D025 stage_a_gen v3 — 0-shot/3-shot ICL regimes
+
+
+      **Commits**: 8fcc94a (v3 code) + 67e9f4a (launcher) + 875aab5 (SVG exemplar
+      fix: SVGX→VCM-SVG)
+
+
+      ### ICL Exemplars (独立源，排除 eval pool + probe pool, seed=20260411)
+
+      - SVG: VCM-SVG (chart/diagram), 3 条 — **已修复域不匹配** (原 SVGX icon → VCM-SVG chart)
+
+      - TikZ: datikz_2076 (488), datikz_32459 (567), datikz_31298 (529) — DaTikZ v2
+      train
+
+      - Asy: vcm_asy_3242 (301), vcm_asy_15882 (426), vcm_asy_2215 (448) — VCM-asy
+
+
+      ### Full dry-run: 3 models × 3 formats × 5 captions × 2 regimes = 90 generations
+
+
+      **Per-group results**:
+
+      | model | format | regime | n | valid | finish_reason | copies | max_ratio |
+
+      |-------|--------|--------|---|-------|---------------|--------|-----------|
+
+      | coder | asy | 0-shot | 5 | 5/5 | stop=4,length=1 | - | - |
+
+      | coder | asy | 3-shot | 5 | 5/5 | stop=5 | 0 | 0.039 |
+
+      | coder | svg | 0-shot | 5 | 5/5 | length=2,stop=3 | - | - |
+
+      | coder | svg | 3-shot | 5 | 5/5 | stop=4,length=1 | 0 | 0.328 |
+
+      | coder | tikz | 0-shot | 5 | 5/5 | stop=5 | - | - |
+
+      | coder | tikz | 3-shot | 5 | 5/5 | stop=5 | 0 | 0.321 |
+
+      | qwen25 | asy | 0-shot | 5 | 5/5 | length=3,stop=2 | - | - |
+
+      | qwen25 | asy | 3-shot | 5 | 5/5 | length=2,stop=3 | 0 | 0.177 |
+
+      | qwen25 | svg | 0-shot | 5 | 5/5 | stop=3,length=2 | - | - |
+
+      | qwen25 | svg | 3-shot | 5 | 5/5 | stop=4,length=1 | 0 | 0.302 |
+
+      | qwen25 | tikz | 0-shot | 5 | 3/5 | stop=5 | - | - |
+
+      | qwen25 | tikz | 3-shot | 5 | 5/5 | stop=4,length=1 | 0 | 0.439 |
+
+      | viscoder2 | asy | 0-shot | 5 | 5/5 | stop=5 | - | - |
+
+      | viscoder2 | asy | 3-shot | 5 | 5/5 | stop=5 | 0 | 0.124 |
+
+      | viscoder2 | svg | 0-shot | 5 | 5/5 | stop=5 | - | - |
+
+      | viscoder2 | svg | 3-shot | 5 | 5/5 | stop=4,length=1 | 0 | 0.295 |
+
+      | viscoder2 | tikz | 0-shot | 5 | 4/5 | stop=5 | - | - |
+
+      | viscoder2 | tikz | 3-shot | 5 | 5/5 | stop=5 | 0 | 0.246 |
+
+
+      **Copy detection**: 0 suspected copies (all max_ratio < 0.44, threshold 0.7)
+
+      **SVG domain fix**: VisCoder2 SVG 3-shot 不再复制 exemplar，生成 bar chart 而非 icon
+      ✓
+
+      **TikZ documentclass**: 3-shot 全部含 documentclass (正常行为，exemplar 示范效应)；0-shot
+      部分含
+
+      **GPU**: 0 MiB / 0 MiB, 双卡已释放'
+    gpu: ''
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0,cuda:1
+      started_at: '2026-04-11T10:18:00Z'
+      command: bash scripts/launch_stage_a_gen_v3.sh
+      code_commit: a9d913d
+    pid: 29928
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_a_gen_v3.log
+    metrics:
+      total_records: 3600
+      valid_records: 3227
+      valid_rate: 0.896
+      truncated_length: 608
+      truncated_rate: 0.169
+      finish_stop: 2992
+      finish_length: 608
+      by_model:
+        viscoder2: 1200
+        coder: 1200
+        qwen25: 1200
+      by_format:
+        svg: 1200
+        tikz: 1200
+        asy: 1200
+      by_regime:
+        0-shot: 1800
+        3-shot: 1800
+      wallclock_minutes: 26
+      commit: a9d913d
+      truncation_by_cell:
+        viscoder2_svg: 0.505
+        viscoder2_tikz: 0.032
+        viscoder2_asy: 0
+        coder_svg: 0.182
+        coder_tikz: 0.052
+        coder_asy: 0.028
+        qwen25_svg: 0.188
+        qwen25_tikz: 0.26
+        qwen25_asy: 0.272
+      validity_by_cell:
+        viscoder2_svg: 0.972
+        viscoder2_tikz: 0.962
+        viscoder2_asy: 1
+        coder_svg: 1
+        coder_tikz: 0.995
+        coder_asy: 1
+        qwen25_svg: 0.662
+        qwen25_tikz: 0.722
+        qwen25_asy: 0.752
+      high_truncation_cells:
+      - viscoder2_svg(50.5%)
+      - qwen25_tikz(26.0%)
+      - qwen25_asy(27.2%)
+      qwen25_0shot_validity:
+        svg: 0.365
+        tikz: 0.495
+        asy: 0.54
+      qwen25_3shot_validity:
+        svg: 0.96
+        tikz: 0.95
+        asy: 0.965
+    conclusion: success
+  stage_b_probe:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-11T10:58:40.986Z'
+    updated_at: '2026-04-11T11:07:15.058Z'
+    hypothesis: 'Stage B HF teacher-forcing probe: 3 models × 3 formats × 252 triples.
+      Teacher-force reference code, capture residual stream at layers {8,16,20,24,28,32},
+      mean-pool over code-token positions → [6, hidden_dim] per sample. fp16 inference,
+      2-GPU parallel (models serial, formats parallel within model). Pre-reg §3/§5/§12.'
+    parent: stage_a_gen_v3
+    server: autodl-viscode-probe
+    notes: '## v1 FAILED — python3 not found in AutoDL conda env
+
+
+      `python3` 命令在 AutoDL 的 conda base 环境中不存在。修复: python3→$PYTHON (/root/miniconda3/bin/python)。commit
+      26bb53c。
+
+
+      → 重启为 stage_b_probe_v2'
+    gpu: cuda:0,cuda:1
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0,cuda:1
+      started_at: '2026-04-11T10:59:52.885Z'
+      command: source /etc/network_turbo 2>/dev/null; cd /root/autodl-tmp/viscode_shared_subspace_probe
+        && git fetch origin && git reset --hard origin/main && bash scripts/launch_stage_b_probe.sh
+      code_commit: c8814343f85a11155c7b927a44817c7bd47a1319
+      finished_at: '2026-04-11T11:05:10.856Z'
+      training_hours: 0.09
+    pid: '40139'
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_b_probe.log
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-11T11:05:10.979456+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-11T11:05:11.908762+00:00'
+  stage_b_probe_v2:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-11T11:07:18.207Z'
+    updated_at: '2026-04-11T11:14:18.132Z'
+    hypothesis: 'Stage B HF teacher-forcing probe v2: python3→python fix. Same design
+      as v1. 3 models × 3 formats × 252 triples, layers {8,16,20,24,28,32}, mean-pool
+      code tokens → [6, hidden_dim]. commit 26bb53c.'
+    parent: stage_b_probe
+    server: autodl-viscode-probe
+    gpu: cuda:0,cuda:1
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0,cuda:1
+      started_at: '2026-04-11T11:07:35.173Z'
+      command: source /etc/network_turbo 2>/dev/null; cd /root/autodl-tmp/viscode_shared_subspace_probe
+        && git fetch origin && git reset --hard origin/main && bash scripts/launch_stage_b_probe.sh
+      code_commit: c8814343f85a11155c7b927a44817c7bd47a1319
+      finished_at: '2026-04-11T11:10:20.121Z'
+      training_hours: 0.05
+    pid: 40674
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_b_probe_v2.log
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-11T11:10:20.251087+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-11T11:10:21.566647+00:00'
+    notes: '## Stage B HF teacher-forcing probe v2
+
+
+      **Commits**: 26bb53c (python3→python) + 505cbd3 (conda.sh source fix)
+
+
+      v1 failed: python3 not found. v2 fix: $PYTHON=/root/miniconda3/bin/python.
+
+      v2 first attempt failed: git fetch network error. Restarted manually.
+
+      v2 second attempt: conda activation fix (source conda.sh directly).
+
+
+      **Current run**: PID 40674, tmux stage_b_probe_v2
+
+      - Preflight PASS: torch=2.10.0+cu128, transformers=4.57.6, cuda=True, gpus=2
+
+      - Resolving triples from SVGX-Core-250k + DaTikZ v2 + VCM-asy
+
+      - Then 3 models × 3 formats × 252 triples hidden state extraction'
+  stage_b_probe_v3:
+    status: DONE
+    retry_count: 1
+    created_at: '2026-04-11T11:18:01.364Z'
+    updated_at: '2026-04-11T11:57:16.966Z'
+    hypothesis: 'Stage B HF teacher-forcing probe v3: DaTikZ v2 load fix (HF datasets
+      API instead of hardcoded disk path). Same design as v1/v2. 3 models × 3 formats
+      × 252 triples, layers {8,16,20,24,28,32}, mean-pool code tokens → [6, hidden_dim].
+      commit 6417a62.'
+    parent: stage_b_probe_v2
+    gpu: cuda:0,cuda:1
+    notes: '## Stage B HF teacher-forcing probe v3 — RUNNING (revived from premature
+      FAILED)
+
+
+      **Commits**: 6417a62 + 9b5e0e2 (DaTikZ v2 HF API + sbert_triples schema fix)
+
+
+      ### Timeline (2026-04-11 UTC+8)
+
+      - 19:19: launcher started (PID 42196)
+
+      - 19:39: resolve_only python started (PID 42289)
+
+      - 19:51: resolved_triples.json generated (964KB, 252 triples)
+
+      - 19:51-19:53: coder model extraction complete (3 formats, 252/252 each, ~30s/fmt
+      @ 7-10 samples/s)
+
+      - 19:53+: viscoder2 extraction in progress (3 formats parallel, PIDs 43700/43701/43702)
+
+
+      ### Premature FAILED root cause
+
+      Previous worker marked experiment FAILED at 19:34 because Python stdout was
+      block-buffered in the pipe — no `[resolve]` progress prints visible in log despite
+      process being fully alive. Only datasets-library logger messages (stderr, line-buffered)
+      visible until process exit. Process was healthy throughout: 101% CPU, Rl+ state,
+      CPU time advancing 1:1 with wall time, RSS growing from 3GB→4.3GB over 10min.
+
+
+      ### GPU utilization (19:53 sample)
+
+      - GPU 0: 34280 MiB used, 74% util (svg + asy parallel)
+
+      - GPU 1: 17193 MiB used, 18% util (tikz)
+
+
+      ### ⚠️ Pre-reg deviation: layer 32 > n_layers 28
+
+      All 3 models are 7B with 28 hidden layers but LAYERS=[8,16,20,24,28,32] includes
+      layer 32. Code fallback uses last layer (28), so layer-32 slot is duplicate
+      of layer-28. To flag for Director: either (a) drop layer 32 from pre-reg and
+      re-run, (b) accept duplicate slot and note in report, (c) verify if Qwen2.5-7B
+      has >28 layers.
+
+
+      ### Log
+
+      /root/autodl-tmp/logs/stage_b_v3.log
+
+      tmux session: stage_b_v3
+
+      launcher PID: 42196'
+    reproduce:
+      finished_at: '2026-04-11T11:34:28.075Z'
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-11T11:34:28.243034+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-11T11:34:29.259489+00:00'
+      previous_failure:
+        conclusion: failed
+        notes: '## Stage B HF teacher-forcing probe v3
+
+
+          **Commits**: 6417a62 (DaTikZ v2 HF datasets API fix)
+
+
+          v1 failed: python3 not found. v2 failed: conda activation + DaTikZ v2 hardcoded
+          path.
+
+          v3 fix: datasets.load_dataset("nllg/datikz-v2", split="train") via HF cache.
+
+
+          **Current run**: PID 41064 (launcher), PID 41156 (python --resolve-only),
+          tmux stage_b_v3
+
+          - Preflight PASS: torch=2.10.0+cu128, transformers=4.57.6, cuda=True, gpus=2
+
+          - DaTikZ v2: ✅ loaded from HF cache (nllg___datikz-v2/default/0.0.0/673be97...)
+
+          - SVGX-Core-250k: ✅ loaded
+
+          - Phase: --resolve-only (resolving triples), then 3 models × 3 formats ×
+          252 triples extraction
+
+          - Log: /root/autodl-tmp/logs/stage_b_v3.log'
+    conclusion: success
+    metrics:
+      n_pt_total: 2268
+      n_summaries: 9
+      n_models: 3
+      n_formats: 3
+      n_triples: 252
+      hidden_dim: 3584
+      tensor_shape:
+      - 6
+      - 3584
+      tensor_dtype: float32
+      total_size_mb: 196
+      layers:
+      - 8
+      - 16
+      - 20
+      - 24
+      - 28
+      - 32
+      n_layers_model: 28
+      per_model_format:
+        coder/svg: 252
+        coder/tikz: 252
+        coder/asy: 252
+        viscoder2/svg: 252
+        viscoder2/tikz: 252
+        viscoder2/asy: 252
+        qwen25/svg: 252
+        qwen25/tikz: 252
+        qwen25/asy: 252
+      artifact_path: /root/autodl-tmp/cache/hidden_states
+      last_summary_ts: '2026-04-11T11:54:42+00:00'
+  stage_b_probe_v4:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-11T12:15:15.115Z'
+    updated_at: '2026-04-11T14:53:19.439Z'
+    hypothesis: 'Stage B HF teacher-forcing probe v4 (D026 Reviewer CRITICAL fix,
+      8-item): 3 models × 3 formats × 252 triples, LAYERS=[4,8,12,16,20,24,28] 7-layer
+      equidistant (28-layer Qwen 7B), fail-fast layer OOB, summary.layers_resolved,
+      post-run pairwise row distinctness sanity assertion, launcher svg+tikz parallel
+      / asy wait, HF Arrow columnar access, line-buffered stdout. tensor shape [7,
+      3584]. parent stage_b_probe_v3 (CORRUPTED).'
+    parent: stage_b_probe_v3
+    notes: 'commit faf4a8a, tmux stage_b_v4, PID svg=45728 tikz=45729, output /root/autodl-tmp/cache/hidden_states/,
+      v3 backed up to hidden_states_v3_CORRUPTED/. Poll evidence: (T1) GPU0 13% 28310MiB
+      loading coder shards, layers=[4,8,12,16,20,24,28] visible in log; (T2) coder/svg
+      252 saved 34.9s, coder/tikz 252 saved 29.1s, sanity 3 files × 21 pairs all distinct
+      ✓, summary.json layers_resolved=[4,8,12,16,20,24,28] model_n_layers=28 tensor_shape=[7,3584].
+      coder/asy loading. No Traceback.'
+    conclusion: success
+    metrics:
+      n_pt_total: 2268
+      n_summaries: 9
+      n_models: 3
+      n_formats: 3
+      n_triples: 252
+      hidden_dim: 3584
+      tensor_shape:
+      - 7
+      - 3584
+      layers:
+      - 4
+      - 8
+      - 12
+      - 16
+      - 20
+      - 24
+      - 28
+      n_layers_model: 28
+  stage_b_analysis_v2:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-11T14:53:13.691Z'
+    updated_at: '2026-04-12T03:15:24.434Z'
+    hypothesis: 'Stage B analysis v2: full run with PWCCA (Morcos 2018) + Procrustes
+      robustness, CCA removed (n<<d degeneracy), A2 permutation N=5000. 3 models ×
+      7 layers × 3 format pairs. Parent: stage_b_probe_v4.'
+    parent: stage_b_probe_v4
+    conclusion: success
+    metrics:
+      wallclock_s: 1433.8
+      rss_gb: 0.73
+      n_triples: 252
+      n_bootstrap: 1000
+      n_power_iter: 1000
+      n_perm: 5000
+      cka_L28:
+        coder: 0.149
+        viscoder2: 0.137
+        qwen25: 0.076
+      a2_p_values:
+        coder: 0
+        viscoder2: 0
+        qwen25: 0
+      a2_observed_vs_null:
+        coder: 0.1226 vs 0.0413
+        viscoder2: 0.1243 vs 0.0443
+        qwen25: 0.1011 vs 0.0366
+      bootstrap_ci_width:
+        min: 0.037
+        max: 0.05
+        mean: 0.043
+      pwcca_range: 0.76-0.82
+      pwcca_null:
+        coder:
+          observed: 0.7903
+          null_mean: 0.6884
+          null_std: 0.0039
+          ratio: 1.148
+          p: 0
+        viscoder2:
+          observed: 0.7845
+          null_mean: 0.6851
+          null_std: 0.0038
+          ratio: 1.145
+          p: 0
+        qwen25:
+          observed: 0.7876
+          null_mean: 0.6987
+          null_std: 0.0036
+          ratio: 1.127
+          p: 0
+        n_perm: 300
+      a1_power:
+        N12: 1
+        N18: 1
+      probe_accuracy: 1.0000 all layers all models
+      checkpoints: 7
+      output_files: 10
+  negative_control_python:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T05:02:50.958Z'
+    updated_at: '2026-04-12T10:13:41.590Z'
+    hypothesis: 'Non-visual negative control: Python code (non-visual) as fourth format.
+      Teacher-force 252 random Python snippets through 3 models × 7 layers, compute
+      Python-SVG/TikZ/Asy CKA. If Python-X CKA << visual cross-format CKA (0.08-0.15)
+      → visual signal confirmed; if ≈ → syntax/tokenizer artifact. Parent: stage_b_analysis_v2.'
+    parent: stage_b_analysis_v2
+    notes: AutoDL SSH 不可达，改用 A6000 执行。Worker worker_code_c1_a6000_exec_20260412T100417
+      已派发。任务：环境探测 → 数据检查 → 路径适配 → 执行 prepare_python_snippets.py + negative_control_probe.py
+      (×3 models) + negative_control_cka.py。关键风险：visual hidden states 可能不在 A6000 上（只在
+      AutoDL 生成过）。
+    conclusion: success
+    metrics:
+      n_triples: 252
+      n_perm: 5000
+      elapsed_s: 694.4
+      server: A6000
+      cka_L28_python_x:
+        coder: 0.103
+        viscoder2: 0.093
+        qwen25: 0.031
+      cka_L28_visual_x:
+        coder: 0.148
+        viscoder2: 0.136
+        qwen25: 0.075
+      ratio_python_visual:
+        coder: 0.7
+        viscoder2: 0.69
+        qwen25: 0.42
+      python_x_p_significant: mostly >0.05
+      visual_x_p_significant: all <0.001
+  codestral_pilot:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T13:17:55.060Z'
+    updated_at: '2026-04-12T16:24:03.623Z'
+    hypothesis: 'Codestral-22B pilot: 30 prompts × 3 formats × 2 shot regimes = 180
+      gens. Verify Codestral can generate valid SVG/TikZ/Asy with existing stage_a_gen.py
+      + MODEL_REGISTRY codestral entry. gpu_mem_util=0.90, max_model_len=4096. Parent:
+      stage_a_gen_v3.'
+    parent: stage_a_gen_v3
+    notes: '## 执行结果
+
+
+      Phase 0: 清理残留进程(8+僵尸进程) + locks + 重复缓存(回收11GB)
+
+      Phase 1: 三模型下载完成 — Codestral-22B(9 shards, 47min), StarCoder2-15B(18min), DeepSeek-V2-Lite(28min)。AutoConfig验证全部通过。
+
+      Phase 2: Pilot已在前次Worker运行中完成(seed=20260411), 180 gens (outputs/pilot_codestral/)
+
+      Phase 3: 整体valid=96.7%, trunc=2.2%。SVG 0-shot较低(86.7%)但3-shot达100%。TikZ/Asy均≥96.7%。
+
+      Phase 4: Registry更新
+
+
+      ### 关键发现
+
+      - 3-shot ICL对SVG validity提升显著 (86.7% → 100%)
+
+      - SVG 3-shot有4条truncation (max_tokens=1024), 考虑full-scale时提高
+
+      - TikZ/Asy无truncation问题
+
+      - Codestral-22B fp16单卡RTX PRO 6000可运行 (gpu_mem_util=0.90, max_model_len=4096)
+
+
+      Worker: worker_codestral_pilot_v3_20260412T162200'
+    conclusion: success
+    metrics:
+      total_gens: 180
+      valid_rate: 0.967
+      truncation_rate: 0.022
+      svg_0shot_valid: 0.867
+      svg_3shot_valid: 1
+      tikz_0shot_valid: 0.967
+      tikz_3shot_valid: 0.967
+      asy_0shot_valid: 1
+      asy_3shot_valid: 1
+      svg_0shot_avg_tokens: 510.8
+      svg_3shot_avg_tokens: 654.1
+      tikz_0shot_avg_tokens: 304.7
+      tikz_3shot_avg_tokens: 322.3
+      asy_0shot_avg_tokens: 433.6
+      asy_3shot_avg_tokens: 419.2
+  starcoder2_pilot:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T16:23:36.111Z'
+    updated_at: '2026-04-12T17:09:11.157Z'
+    hypothesis: 'StarCoder2-15B pilot: 30 prompts × 3 formats × 2 shot regimes = 180
+      gens. Verify StarCoder2 can generate valid SVG/TikZ/Asy. Parent: stage_a_gen_v3.'
+    parent: stage_a_gen_v3
+    metrics:
+      svg:
+        total: 60
+        stop: 55
+        truncated: 5
+        valid: 26
+        avg_tokens: 397
+      tikz:
+        total: 60
+        stop: 56
+        truncated: 4
+        valid: 53
+        avg_tokens: 280
+      asy:
+        total: 60
+        stop: 59
+        truncated: 1
+        valid: 60
+        avg_tokens: 352
+      gen_time_s:
+        svg: 33.8
+        tikz: 29.1
+        asy: 57.5
+    notes: 180 gens on RTX PRO 6000 Blackwell (94GB). SVG valid rate low (43%) — SC2
+      wraps SVG in Python xml.etree code instead of raw SVG. TikZ (88%) and ASY (100%)
+      good. Total gen time ~120s (warmup amortized). vLLM v0.19.0 with torch.compile
+      + CUDA graphs (PIECEWISE+FULL).
+    conclusion: success
+  deepseek_pilot:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T16:23:36.781Z'
+    updated_at: '2026-04-12T17:09:11.593Z'
+    hypothesis: 'DeepSeek-Coder-V2-Lite pilot: 30 prompts × 3 formats × 2 shot regimes
+      = 180 gens + hidden states 维度验证 (hidden_dim=2048, MoE architecture). Confirm
+      CKA Gram matrix approach is dimension-agnostic. Parent: stage_a_gen_v3.'
+    parent: stage_a_gen_v3
+    metrics:
+      svg:
+        total: 60
+        stop: 39
+        truncated: 21
+        valid: 57
+        avg_tokens: 861
+      tikz:
+        total: 60
+        stop: 59
+        truncated: 1
+        valid: 58
+        avg_tokens: 478
+      asy:
+        total: 60
+        stop: 60
+        truncated: 0
+        valid: 60
+        avg_tokens: 655
+      gen_time_s:
+        svg: 123.6
+        tikz: 64.5
+        asy: 54.8
+      hidden_dim_verified: 2048
+      num_hidden_layers: 27
+    notes: '180 gens on RTX PRO 6000 Blackwell (94GB). MoE architecture (16B total,
+      2.4B active). SVG truncation high (35%) due to verbose output hitting 1024 max_tokens
+      — consider raising limit. Valid rates excellent: SVG 95%, TikZ 97%, ASY 100%.
+      hidden_dim=2048 confirmed, 27 layers. CKA Gram matrix [NxN] dimension-agnostic
+      verified. vLLM v0.19.0, PIECEWISE-only CUDA graphs (TritonMLABackend), no Blackwell
+      MoE config (sub-optimal fused_moe). Gen ~3.7x slower than StarCoder2 for SVG.'
+    conclusion: success
+  stage_a_gen_multimodel:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T17:05:46.177Z'
+    updated_at: '2026-04-12T17:10:13.084Z'
+    hypothesis: '全量 Stage A gen 多模型扩展：Codestral-22B + StarCoder2-15B + DeepSeek-V2-Lite,
+      各 200 prompts × 3 formats × 2 shot regimes = 1200 gens/model, 共 3600 gens。串行执行避免
+      GPU 竞争。D038: StarCoder2 SVG ~43% valid 是已知行为。Parent: stage_a_gen_v3.'
+    parent: stage_a_gen_v3
+    server: autodl-viscode-probe
+    gpu: cuda:0,cuda:1
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0,cuda:1
+      started_at: '2026-04-12T17:06:38.812Z'
+      command: "source /etc/network_turbo && export HF_HUB_DISABLE_XET=1 && export\
+        \ HF_HOME=/root/autodl-tmp/.hf_cache && export HF_HUB_OFFLINE=1 && export\
+        \ TRANSFORMERS_OFFLINE=1 && export HF_DATASETS_OFFLINE=1 && export HF_HUB_DISABLE_TELEMETRY=1\
+        \ && export VLLM_USE_V1=0 && cd /root/autodl-tmp/viscode_shared_subspace_probe\
+        \ && echo \"=== Stage A Gen Multimodel START $(date -u) ===\" && EVAL_POOL=artifacts/stage_a/eval_pool/v3_4\
+        \ && ICL_EX=artifacts/stage_a/icl_exemplars && SEED=20260412 && for MODEL\
+        \ in codestral starcoder2 deepseek; do OUTDIR=artifacts/stage_a/gen_multimodel/${MODEL}\
+        \ && mkdir -p ${OUTDIR} && echo \"=== ${MODEL} START $(date -u) ===\" && for\
+        \ FMT in svg tikz asy; do echo \"[${MODEL}/${FMT}] start $(date -u)\" && python\
+        \ scripts/stage_a_gen.py --model ${MODEL} --format ${FMT} --shard-id 0 --num-shards\
+        \ 1 --gpu 0 --shot-regime both --icl-exemplars-dir ${ICL_EX} --eval-pool-dir\
+        \ ${EVAL_POOL} --out-dir ${OUTDIR} --max-prompts 200 --seed-base ${SEED} &&\
+        \ echo \"[${MODEL}/${FMT}] done $(date -u)\" || { echo \"[${MODEL}/${FMT}]\
+        \ FAILED $(date -u)\"; exit 1; }; done && echo \"=== ${MODEL} DONE $(date\
+        \ -u) ===\" && echo \"--- ${MODEL} file check ---\" && wc -l ${OUTDIR}/*.jsonl\
+        \ && python -c \"\nimport json, glob\nfiles = sorted(glob.glob('${OUTDIR}/*.jsonl'))\n\
+        total=valid=trunc=0\nfor f in files:\n    for line in open(f):\n        r=json.loads(line);\
+        \ total+=1\n        if r['valid']: valid+=1\n        if r.get('truncated'):\
+        \ trunc+=1\nprint(f'${MODEL}: total={total} valid={valid} ({valid/total:.3f})\
+        \ trunc={trunc} ({trunc/total:.3f})')\n\"; done && echo \"=== ALL MODELS DONE\
+        \ $(date -u) ===\" && echo \"--- FINAL SUMMARY ---\" && for MODEL in codestral\
+        \ starcoder2 deepseek; do wc -l artifacts/stage_a/gen_multimodel/${MODEL}/*.jsonl;\
+        \ done"
+      code_commit: 8b3a5256ef198959fbf1a5430f9e06d172c1b332
+    pid: unknown
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_a_gen_multimodel.log
+    conclusion: killed
+    notes: 'Killed for D039: SVG max_tokens 1024→2048. Restarted as stage_a_gen_multimodel_v2.'
+  stage_a_gen_multimodel_v2:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T17:10:17.571Z'
+    updated_at: '2026-04-12T17:14:24.097Z'
+    hypothesis: '全量 Stage A gen v2 (D039): SVG max_tokens 2048 (was 1024). Codestral-22B
+      + StarCoder2-15B + DeepSeek-V2-Lite, 各 200×3×2=1200, 共 3600 gens. Commit b38963a.
+      Parent: stage_a_gen_multimodel.'
+    parent: stage_a_gen_multimodel
+    server: autodl-viscode-probe
+    gpu: cuda:0
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0
+      started_at: '2026-04-12T17:10:47.148Z'
+      command: "source /etc/network_turbo && export HF_HUB_DISABLE_XET=1 && export\
+        \ HF_HOME=/root/autodl-tmp/.hf_cache && export HF_HUB_OFFLINE=1 && export\
+        \ TRANSFORMERS_OFFLINE=1 && export HF_DATASETS_OFFLINE=1 && export HF_HUB_DISABLE_TELEMETRY=1\
+        \ && export VLLM_USE_V1=0 && cd /root/autodl-tmp/viscode_shared_subspace_probe\
+        \ && rm -rf artifacts/stage_a/gen_multimodel && echo \"=== Stage A Gen Multimodel\
+        \ v2 (D039: SVG max_tokens=2048) START $(date -u) ===\" && EVAL_POOL=artifacts/stage_a/eval_pool/v3_4\
+        \ && ICL_EX=artifacts/stage_a/icl_exemplars && SEED=20260412 && for MODEL\
+        \ in codestral starcoder2 deepseek; do OUTDIR=artifacts/stage_a/gen_multimodel/${MODEL}\
+        \ && mkdir -p ${OUTDIR} && echo \"=== ${MODEL} START $(date -u) ===\" && for\
+        \ FMT in svg tikz asy; do echo \"[${MODEL}/${FMT}] start $(date -u)\" && python\
+        \ scripts/stage_a_gen.py --model ${MODEL} --format ${FMT} --shard-id 0 --num-shards\
+        \ 1 --gpu 0 --shot-regime both --icl-exemplars-dir ${ICL_EX} --eval-pool-dir\
+        \ ${EVAL_POOL} --out-dir ${OUTDIR} --max-prompts 200 --seed-base ${SEED} &&\
+        \ echo \"[${MODEL}/${FMT}] done $(date -u)\" || { echo \"[${MODEL}/${FMT}]\
+        \ FAILED $(date -u)\"; exit 1; }; done && echo \"=== ${MODEL} DONE $(date\
+        \ -u) ===\" && echo \"--- ${MODEL} file check ---\" && wc -l ${OUTDIR}/*.jsonl\
+        \ && python -c \"\nimport json, glob\nfiles = sorted(glob.glob('${OUTDIR}/*.jsonl'))\n\
+        total=valid=trunc=0\nfor f in files:\n    for line in open(f):\n        r=json.loads(line);\
+        \ total+=1\n        if r['valid']: valid+=1\n        if r.get('truncated'):\
+        \ trunc+=1\nprint(f'${MODEL}: total={total} valid={valid} ({valid/total:.3f})\
+        \ trunc={trunc} ({trunc/total:.3f})')\n\"; done && echo \"=== ALL MODELS DONE\
+        \ $(date -u) ===\" && echo \"--- FINAL SUMMARY ---\" && for MODEL in codestral\
+        \ starcoder2 deepseek; do wc -l artifacts/stage_a/gen_multimodel/${MODEL}/*.jsonl;\
+        \ done"
+      code_commit: b38963a1477ba6b1f848689edc0f8638b4555ca7
+      finished_at: '2026-04-12T17:13:22.167Z'
+      training_hours: 0.04
+    pid: unknown
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_a_gen_multimodel_v2.log
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-12T17:13:22.352995+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-12T17:13:23.018996+00:00'
+    notes: '## 失败诊断 (2026-04-12)
+
+
+      **Root cause**: infrastructure — 启动命令使用 `source` 但执行 shell 不是 bash（`env: ''source'':
+      No such file or directory`, EXIT_CODE=127）。进程在环境激活阶段立即退出，未进入 Python。
+
+
+      **已有成果**: 无（0 代生成）
+
+
+      **修复方案**: 提交命令改用 POSIX 兼容 `. /path/to/activate` 或 `bash -c "source /path/to/activate
+      && python ..."` 包裹。与 stage_a_gen v1 同类 infrastructure failure 模式。'
+  stage_a_gen_multimodel_v3:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T17:15:34.722Z'
+    updated_at: '2026-04-12T17:19:48.725Z'
+    hypothesis: '全量 Stage A gen v3: bash -c 包裹修复 network_turbo source 问题。SVG max_tokens=2048
+      (D039). Codestral + StarCoder2 + DeepSeek, 各 200×3×2=1200, 共 3600 gens. Commit
+      b38963a. Parent: stage_a_gen_multimodel_v2.'
+    parent: stage_a_gen_multimodel_v2
+    server: autodl-viscode-probe
+    gpu: cuda:0
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0
+      started_at: '2026-04-12T17:18:07.735Z'
+      command: "bash -c 'source /etc/network_turbo && export HF_HUB_DISABLE_XET=1\
+        \ && export HF_HOME=/root/autodl-tmp/.hf_cache && export HF_HUB_OFFLINE=1\
+        \ && export TRANSFORMERS_OFFLINE=1 && export HF_DATASETS_OFFLINE=1 && export\
+        \ HF_HUB_DISABLE_TELEMETRY=1 && export VLLM_USE_V1=0 && cd /root/autodl-tmp/viscode_shared_subspace_probe\
+        \ && echo \"=== Stage A Gen Multimodel v3 (D039) START $(date -u) ===\" &&\
+        \ EVAL_POOL=artifacts/stage_a/eval_pool/v3_4 && ICL_EX=artifacts/stage_a/icl_exemplars\
+        \ && SEED=20260412 && for MODEL in codestral starcoder2 deepseek; do OUTDIR=artifacts/stage_a/gen_multimodel/${MODEL}\
+        \ && mkdir -p ${OUTDIR} && echo \"=== ${MODEL} START $(date -u) ===\" && for\
+        \ FMT in svg tikz asy; do echo \"[${MODEL}/${FMT}] start $(date -u)\" && python\
+        \ scripts/stage_a_gen.py --model ${MODEL} --format ${FMT} --shard-id 0 --num-shards\
+        \ 1 --gpu 0 --shot-regime both --icl-exemplars-dir ${ICL_EX} --eval-pool-dir\
+        \ ${EVAL_POOL} --out-dir ${OUTDIR} --max-prompts 200 --seed-base ${SEED} &&\
+        \ echo \"[${MODEL}/${FMT}] done $(date -u)\" || { echo \"[${MODEL}/${FMT}]\
+        \ FAILED $(date -u)\"; exit 1; }; done && echo \"=== ${MODEL} DONE $(date\
+        \ -u) ===\" && wc -l ${OUTDIR}/*.jsonl && python -c \"import json,glob; files=sorted(glob.glob(\\\
+        \"${OUTDIR}/*.jsonl\\\")); t=v=tr=0\nfor f in files:\n for l in open(f):\n\
+        \  r=json.loads(l);t+=1\n  if r[\\\"valid\\\"]:v+=1\n  if r.get(\\\"truncated\\\
+        \"):tr+=1\nprint(f\\\"${MODEL}: total={t} valid={v} ({v/t:.3f}) trunc={tr}\
+        \ ({tr/t:.3f})\\\")\"; done && echo \"=== ALL DONE $(date -u) ===\" && for\
+        \ M in codestral starcoder2 deepseek; do wc -l artifacts/stage_a/gen_multimodel/${M}/*.jsonl;\
+        \ done'"
+      code_commit: b38963a1477ba6b1f848689edc0f8638b4555ca7
+    pid: unknown
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_a_gen_multimodel_v3.log
+    conclusion: failed
+    notes: 'Failed: `python` command not found on server (only python3 available in
+      conda base). v4 will use python3 throughout.'
+  stage_a_gen_multimodel_v4:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T17:20:18.809Z'
+    updated_at: '2026-04-12T17:31:02.662Z'
+    hypothesis: '全量 Stage A gen v4: bash -c 包裹 + python3 修复。SVG max_tokens=2048 (D039).
+      Codestral + StarCoder2 + DeepSeek, 各 200×3×2=1200, 共 3600 gens. Commit b38963a.
+      Dry-run 验证后提交。Parent: stage_a_gen_multimodel_v3.'
+    parent: stage_a_gen_multimodel_v3
+    server: autodl-viscode-probe
+    gpu: cuda:0
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0
+      started_at: '2026-04-12T17:26:39.133Z'
+      command: "bash -c 'source /etc/network_turbo && export HF_HUB_DISABLE_XET=1\
+        \ && export HF_HOME=/root/autodl-tmp/.hf_cache && export HF_HUB_OFFLINE=1\
+        \ && export TRANSFORMERS_OFFLINE=1 && export HF_DATASETS_OFFLINE=1 && export\
+        \ HF_HUB_DISABLE_TELEMETRY=1 && export VLLM_USE_V1=0 && source /root/miniconda3/etc/profile.d/conda.sh\
+        \ && conda activate base && cd /root/autodl-tmp/viscode_shared_subspace_probe\
+        \ && echo \"=== v4 START $(date -u) ===\" && for model in codestral starcoder2\
+        \ deepseek; do echo \"--- MODEL: $model $(date -u) ---\" && for fmt in svg\
+        \ tikz asy; do for shot in 0 3; do echo \"  $model/$fmt/shot$shot start $(date\
+        \ -u)\" && python3 scripts/stage_a_gen.py --model $model --format $fmt --shot-regime\
+        \ $shot --gpu 0 --num-shards 1 --shard-id 0 --max-prompts 200 --eval-pool-dir\
+        \ artifacts/stage_a/eval_pool/v3_4 --icl-exemplars-dir artifacts/stage_a/icl_exemplars\
+        \ --out-dir artifacts/stage_a/gen_multimodel/$model --seed-base 20260412 &&\
+        \ echo \"  $model/$fmt/shot$shot done $(date -u)\" || { echo \"FAIL: $model/$fmt/shot$shot\"\
+        ; exit 1; }; done; done; echo \"--- MODEL $model COMPLETE ---\"; done && echo\
+        \ \"=== ALL MODELS DONE $(date -u) ===\" && python3 -c \"\nimport json, pathlib,\
+        \ sys\nd = pathlib.Path(\\\"artifacts/stage_a/gen_multimodel\\\")\ntotal =\
+        \ 0\nfor f in sorted(d.rglob(\\\"*.jsonl\\\")):\n    n = sum(1 for _ in open(f))\n\
+        \    print(f\\\"  {f.relative_to(d)}: {n}\\\")\n    total += n\nprint(f\\\"\
+        TOTAL_GENS={total}\\\")\nsys.exit(0 if total >= 3500 else 1)\n\"'"
+      code_commit: b38963a1477ba6b1f848689edc0f8638b4555ca7
+      finished_at: '2026-04-12T17:29:01.474Z'
+      training_hours: 0.04
+    pid: unknown
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_a_gen_multimodel_v4.log
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-12T17:29:01.672288+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-12T17:29:02.946627+00:00'
+    notes: '## 失败诊断 (2026-04-12)
+
+
+      **Root cause**: infrastructure — launcher 传 `--shot-regime 0` 但 argparse 只接受
+      `0-shot`/`3-shot`/`both`。进程在第一个命令（codestral/svg）立即退出，EXIT_CODE=1。
+
+
+      **已有成果**: 无（0 代生成）
+
+
+      **修复方案**: launcher 中 `--shot-regime` 参数值修正为 `0-shot`/`3-shot`，或直接用 `both`（和
+      v3 launcher 一致）。v5 将基于 launch_stage_a_gen_v3.sh 改造，只替换模型列表为 codestral/starcoder2/deepseek。'
+  stage_a_gen_multimodel_v5:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T17:43:25.335Z'
+    updated_at: '2026-04-12T18:33:17.482Z'
+    hypothesis: '全量 Stage A gen v5: --shot-regime both (恢复 pilot 验证模式), bash -c +
+      conda activate + python3. SVG max_tokens=2048 (D039). 三模型串行 × 3 格式 × --shot-regime
+      both × 200 prompts = 3600 gens. 三模型完整 dry-run 全部通过 (codestral/svg + starcoder2/tikz
+      + deepseek/asy, 各 4 条记录含 0-shot+3-shot). Commit b38963a. Parent: stage_a_gen_multimodel_v4.'
+    parent: stage_a_gen_multimodel_v4
+    server: autodl-viscode-probe
+    gpu: cuda:0
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0
+      started_at: '2026-04-12T17:43:50.731Z'
+      command: 'bash -c ''source /etc/network_turbo && export VLLM_USE_V1=0 && source
+        /root/miniconda3/etc/profile.d/conda.sh && conda activate base && cd /root/autodl-tmp/viscode_shared_subspace_probe
+        && echo "=== v5 START $(date -u) ===" && for model in codestral starcoder2
+        deepseek; do for fmt in svg tikz asy; do echo ">>> $model/$fmt $(date -u)"
+        && python3 scripts/stage_a_gen.py --model $model --format $fmt --shot-regime
+        both --shard-id 0 --num-shards 1 --gpu 0 --max-prompts 200 --eval-pool-dir
+        artifacts/stage_a/eval_pool/v3_4 --icl-exemplars-dir artifacts/stage_a/icl_exemplars
+        --out-dir artifacts/stage_a/gen_multimodel/$model --seed-base 20260412 ||
+        { echo "FAIL: $model/$fmt"; exit 1; }; done; echo "--- $model DONE ---"; done
+        && echo "=== ALL DONE $(date -u) ===" && python3 -c "import pathlib; d=pathlib.Path(\"artifacts/stage_a/gen_multimodel\");
+        total=sum(sum(1 for _ in open(f)) for f in d.rglob(\"*.jsonl\")); print(f\"TOTAL_GENS={total}\");
+        exit(0 if total>=3500 else 1)"'''
+      code_commit: 66f6e7b94e879d3b5a1158386b5127b2642642db
+      finished_at: '2026-04-12T18:26:36.820Z'
+      training_hours: 0.71
+    pid: '24665'
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_a_gen_multimodel_v5.log
+    extra:
+      hook_events:
+      - event: on_complete
+        action: autodl_release
+        ts: '2026-04-12T18:26:36.987747+00:00'
+      - event: on_complete
+        action: agent
+        ts: '2026-04-12T18:26:37.944659+00:00'
+    conclusion: success
+    metrics:
+      total_records: 3600
+      expected_records: 3600
+      overall_valid: 3361
+      overall_valid_rate: 0.934
+      codestral:
+        total: 1200
+        valid: 1174
+        valid_rate: 0.978
+        truncated: 0
+        svg_0shot_valid: 0.95
+        svg_3shot_valid: 1
+        tikz_0shot_valid: 0.96
+        tikz_3shot_valid: 0.96
+        asy_0shot_valid: 1
+        asy_3shot_valid: 1
+      starcoder2:
+        total: 1200
+        valid: 998
+        valid_rate: 0.832
+        truncated: 33
+        svg_0shot_valid: 0.705
+        svg_3shot_valid: 0.58
+        tikz_0shot_valid: 0.86
+        tikz_3shot_valid: 0.845
+        asy_0shot_valid: 1
+        asy_3shot_valid: 1
+      deepseek:
+        total: 1200
+        valid: 1189
+        valid_rate: 0.991
+        truncated: 22
+        svg_0shot_valid: 0.97
+        svg_3shot_valid: 1
+        tikz_0shot_valid: 0.975
+        tikz_3shot_valid: 1
+        asy_0shot_valid: 1
+        asy_3shot_valid: 1
+    notes: '## 全量 Stage A gen multimodel v5 — SUCCESS
+
+
+      3600/3600 记录完整生成，EXIT_CODE=0，无错误。
+
+
+      ### 各模型 valid rate
+
+      - **Codestral-22B**: 97.8% (1174/1200), 0 truncation — 最稳定
+
+      - **DeepSeek-V2-Lite**: 99.1% (1189/1200), 22 truncation — 最高 valid rate
+
+      - **StarCoder2-15B**: 83.2% (998/1200), 33 truncation — SVG 仍为短板
+
+
+      ### 与 Pilot 对比
+
+      - Codestral: 96.7% → 97.8% (+1.1pp)
+
+      - StarCoder2: 77.2% → 83.2% (+6.0pp), SVG 从 43.3% 提升至 64.3% (+21pp, pilot 高方差)
+
+      - DeepSeek: 97.2% → 99.1% (+1.9pp)
+
+
+      ### 关键发现
+
+      1. StarCoder2 SVG 3-shot (58%) < 0-shot (70.5%) — ICL exemplar 可能干扰 SVG 生成
+
+      2. Asy 格式 100% valid across all models × regimes
+
+      3. 3-shot 普遍 ≥ 0-shot (除 StarCoder2 SVG 逆转)
+
+      4. Codestral 零截断，max_tokens 设置充裕
+
+
+      GPU 已释放，磁盘 188G/379G (50%)。数据可直接用于 Stage B probe。'
+  stage_b_probe_multimodel:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T18:30:17.944Z'
+    updated_at: '2026-04-12T19:07:19.845Z'
+    hypothesis: 'Stage B teacher-forcing hidden state extraction for 3 new models
+      (Codestral-22B/56L, StarCoder2-15B/40L, DeepSeek-V2-Lite/27L). 252 triples ×
+      3 formats × 3 models = 2268 extractions. Layers via formula round(n_layers*(i+1)/7).
+      Uses v5 valid samples. Commit 24f7d65 (layer unification). Parent: stage_a_gen_multimodel_v5.'
+    parent: stage_a_gen_multimodel_v5
+    server: autodl-viscode-probe
+    gpu: cuda:0
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0
+      started_at: '2026-04-12T18:31:03.567Z'
+      command: "bash -c 'source /etc/network_turbo && source /root/miniconda3/etc/profile.d/conda.sh\
+        \ && conda activate base && export HF_HUB_OFFLINE=1 && export TRANSFORMERS_OFFLINE=1\
+        \ && export HF_DATASETS_OFFLINE=1 && export HF_HUB_DISABLE_TELEMETRY=1 &&\
+        \ export HF_HOME=/root/autodl-tmp/.hf_cache && cd /root/autodl-tmp/viscode_shared_subspace_probe\
+        \ && echo \"=== Stage B multimodel START $(date -u) ===\" && for model in\
+        \ codestral starcoder2 deepseek; do for fmt in svg tikz asy; do echo \">>>\
+        \ $model/$fmt $(date -u)\" && python3 scripts/stage_b_probe.py --model $model\
+        \ --format $fmt --gpu 0 --triples-path outputs/stage_a/sbert_triples.json\
+        \ --out-dir /root/autodl-tmp/cache/hidden_states || { echo \"FAIL: $model/$fmt\"\
+        ; exit 1; }; done; echo \"--- $model DONE $(date -u) ---\"; done && echo \"\
+        === ALL DONE $(date -u) ===\" && python3 -c \"\nimport pathlib, json\nd =\
+        \ pathlib.Path(\\\"/root/autodl-tmp/cache/hidden_states\\\")\nfor model in\
+        \ [\\\"codestral\\\", \\\"starcoder2\\\", \\\"deepseek\\\"]:\n    for fmt\
+        \ in [\\\"svg\\\", \\\"tikz\\\", \\\"asy\\\"]:\n        p = d / model / fmt\n\
+        \        n = len(list(p.glob(\\\"*.pt\\\"))) if p.exists() else 0\n      \
+        \  s = p / \\\"summary.json\\\"\n        info = json.load(open(s)) if s.exists()\
+        \ else {}\n        print(f\\\"  {model}/{fmt}: {n} tensors, layers={info.get(\\\
+        \"layers\\\",\\\"?\\\")}, dim={info.get(\\\"hidden_dim\\\",\\\"?\\\")}\\\"\
+        )\nprint(\\\"STAGE_B_MULTIMODEL_COMPLETE\\\")\n\"'"
+      code_commit: 24f7d65dd7ded7a11f0bdcba6b36f4533d366c5b
+      finished_at: '2026-04-12T18:46:48.026Z'
+      training_hours: 0.26
+    pid: '30445'
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_b_probe_multimodel.log
+    conclusion: success
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-12T18:46:48.246985+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-12T18:46:49.633131+00:00'
+    notes: '## Stage B multimodel probe — SUCCESS (修复后)
+
+
+      **初始运行**: Codestral + StarCoder2 成功，DeepSeek 在 forward pass 崩溃。
+
+      **Root cause**: DeepSeek trust_remote_code 的 modeling_deepseek.py 调用 `DynamicCache.get_usable_length(kv_seq_len,
+      layer_idx)`，但 transformers 4.57.6 已重命名为 `get_seq_length(layer_idx)`。
+
+      **修复**: commit 71776fb — lambda 适配器丢弃 kv_seq_len 参数，monkey-patch DynamicCache。
+
+
+      ### 最终结果 (全部 9/9 通过)
+
+      | model | format | tensors | layers | dim |
+
+      |-------|--------|---------|--------|-----|
+
+      | codestral | svg/tikz/asy | 252 each | [8,16,24,32,40,48,56] | 6144 |
+
+      | starcoder2 | svg/tikz/asy | 252 each | [6,11,17,23,29,34,40] | 6144 |
+
+      | deepseek | svg/tikz/asy | 252 each | [4,8,12,15,19,23,27] | 2048 |
+
+
+      总计 2268 tensors，pairwise row distinctness sanity 全部 ✓。
+
+      Worker: worker_fix_stage_b_probe_deepseek_20260412T184823'
+    metrics:
+      n_pt_total: 2268
+      n_summaries: 9
+      n_models: 3
+      n_formats: 3
+      n_triples: 252
+      codestral:
+        layers:
+        - 8
+        - 16
+        - 24
+        - 32
+        - 40
+        - 48
+        - 56
+        hidden_dim: 6144
+        n_layers_model: 56
+      starcoder2:
+        layers:
+        - 6
+        - 11
+        - 17
+        - 23
+        - 29
+        - 34
+        - 40
+        hidden_dim: 6144
+        n_layers_model: 40
+      deepseek:
+        layers:
+        - 4
+        - 8
+        - 12
+        - 15
+        - 19
+        - 23
+        - 27
+        hidden_dim: 2048
+        n_layers_model: 27
+      fix_commit: 71776fb
+  stage_b_probe_multimodel_v2:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T18:49:25.074Z'
+    updated_at: '2026-04-12T19:17:03.732Z'
+    hypothesis: 'Stage B DeepSeek-V2-Lite only: monkey-patch DynamicCache.get_usable_length
+      (D040). 3 formats × 252 triples = 756 extractions. Codestral/StarCoder2 results
+      preserved from v1. Commit 86cc648. Parent: stage_b_probe_multimodel.'
+    parent: stage_b_probe_multimodel
+    server: autodl-viscode-probe
+    gpu: cuda:1
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:1
+      started_at: '2026-04-12T18:56:32.150Z'
+      command: "bash -c 'source /etc/network_turbo && source /root/miniconda3/etc/profile.d/conda.sh\
+        \ && conda activate base && export HF_HUB_OFFLINE=1 && export TRANSFORMERS_OFFLINE=1\
+        \ && export HF_DATASETS_OFFLINE=1 && export HF_HUB_DISABLE_TELEMETRY=1 &&\
+        \ export HF_HOME=/root/autodl-tmp/.hf_cache && cd /root/autodl-tmp/viscode_shared_subspace_probe\
+        \ && echo \"=== Stage B v2 DeepSeek-only START $(date -u) ===\" && for fmt\
+        \ in svg tikz asy; do echo \">>> deepseek/$fmt $(date -u)\" && python3 scripts/stage_b_probe.py\
+        \ --model deepseek --format $fmt --gpu 0 --triples-path outputs/stage_a/sbert_triples.json\
+        \ --out-dir /root/autodl-tmp/cache/hidden_states || { echo \"FAIL: deepseek/$fmt\"\
+        ; exit 1; }; done && echo \"=== DeepSeek DONE $(date -u) ===\" && python3\
+        \ -c \"\nimport pathlib, json\nd = pathlib.Path(\\\"/root/autodl-tmp/cache/hidden_states/deepseek\\\
+        \")\nfor fmt in [\\\"svg\\\", \\\"tikz\\\", \\\"asy\\\"]:\n    p = d / fmt\n\
+        \    n = len(list(p.glob(\\\"*.pt\\\"))) if p.exists() else 0\n    s = p /\
+        \ \\\"summary.json\\\"\n    info = json.load(open(s)) if s.exists() else {}\n\
+        \    print(f\\\"  deepseek/{fmt}: {n} tensors, layers={info.get(\\\"layers\\\
+        \",\\\"?\\\")}, dim={info.get(\\\"hidden_dim\\\",\\\"?\\\")}\\\")\nprint(\\\
+        \"STAGE_B_V2_COMPLETE\\\")\n\"'"
+      code_commit: 86cc648af90870057131e2b8e1bf4635d9548048
+      finished_at: '2026-04-12T19:13:36.039Z'
+      training_hours: 0.28
+    pid: '34139'
+    log_path: ~/runs/viscode_shared_subspace_probe/stage_b_probe_multimodel_v2.log
+    notes: '## Stage B Probe Multimodel v2 — SUCCESS
+
+
+      DeepSeek-V2-Lite 补跑完成（v1 因 DynamicCache.get_usable_length 兼容问题失败，commit 86cc648
+      monkey-patch 修复）。
+
+
+      ### DeepSeek-V2-Lite 结果
+
+      | Format | tensors | shape | layers | skipped | 耗时 |
+
+      |--------|---------|-------|--------|---------|------|
+
+      | SVG | 252 | [7, 2048] | [4,8,12,15,19,23,27] | 0 | 214.5s |
+
+      | TikZ | 252 | [7, 2048] | [4,8,12,15,19,23,27] | 0 | 209.1s |
+
+      | Asy | 252 | [7, 2048] | [4,8,12,15,19,23,27] | 0 | 211.1s |
+
+
+      Sanity: 3 files × 21 pairs all distinct ✓
+
+
+      ### v1 + v2 汇总（全部完成）
+
+      | Model | tensors | layers | dim |
+
+      |-------|---------|--------|-----|
+
+      | Codestral-22B | 756 | [8,16,24,32,40,48,56] | 6144 |
+
+      | StarCoder2-15B | 756 | [6,11,17,23,29,34,40] | 6144 |
+
+      | DeepSeek-V2-Lite | 756 | [4,8,12,15,19,23,27] | 2048 |
+
+
+      总计 2268 tensors，3 models × 3 formats × 252 samples。可进入跨家族 CKA 分析。
+
+      Worker: worker_analyze_stage_b_probe_multimodel_v2_20260412T191437'
+    extra:
+      hook_events:
+      - event: on_complete
+        action: autodl_release
+        ts: '2026-04-12T19:13:36.258825+00:00'
+      - event: on_complete
+        action: agent
+        ts: '2026-04-12T19:13:36.985989+00:00'
+    conclusion: success
+    metrics:
+      exit_code: 0
+      model: deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct
+      model_key: deepseek
+      n_layers: 27
+      hidden_dim: 2048
+      probe_layers:
+      - 4
+      - 8
+      - 12
+      - 15
+      - 19
+      - 23
+      - 27
+      formats:
+      - svg
+      - tikz
+      - asy
+      samples_per_format: 252
+      total_tensors_deepseek: 756
+      tensor_shape:
+      - 7
+      - 2048
+      skipped: 0
+      sanity_check: pass
+      elapsed_total_s: 634.7
+      stage_b_complete:
+        codestral:
+          tensors: 756
+          layers:
+          - 8
+          - 16
+          - 24
+          - 32
+          - 40
+          - 48
+          - 56
+          dim: 6144
+        starcoder2:
+          tensors: 756
+          layers:
+          - 6
+          - 11
+          - 17
+          - 23
+          - 29
+          - 34
+          - 40
+          dim: 6144
+        deepseek:
+          tensors: 756
+          layers:
+          - 4
+          - 8
+          - 12
+          - 15
+          - 19
+          - 23
+          - 27
+          dim: 2048
+      total_tensors_all_models: 2268
+  stage_b_analysis_multimodel:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T19:41:22.855Z'
+    updated_at: '2026-04-12T20:46:49.980Z'
+    hypothesis: 'Cross-family CKA analysis: Codestral-22B/56L, StarCoder2-15B/40L,
+      DeepSeek-V2-Lite/27L. Per-model CKA + A2 permutation (5000) + Bootstrap CI (1000)
+      + PWCCA + PWCCA perm null (300). Layers via round(n_layers*(i+1)/7). Parent:
+      stage_b_probe_multimodel_v2.'
+    parent: stage_b_probe_multimodel_v2
+    notes: '## 跨架构 CKA 分析 — D042 修正后
+
+
+      **D042 CRITICAL fix**: Peak CKA 统一为 bootstrap mean（v1 混用了 raw arithmetic mean
+      和 bootstrap mean）。
+
+
+      ### 修正后总览（统一 bootstrap mean [95% CI]）
+
+      | Model | Peak Layer | Depth | Bootstrap Mean [95% CI] | obs/null | Profile
+      |
+
+      |-------|-----------|-------|------------------------|----------|---------|
+
+      | Codestral-22B | L32 | 57% | 0.190 [0.178, 0.203] | 3.01x | inverted-U |
+
+      | Qwen-Coder-7B | L28 | 100% | 0.187 [0.164, 0.212] | 2.96x | monotonic |
+
+      | VisCoder2-7B | L24 | 86% | 0.184 [0.162, 0.207] | 2.81x | late-plateau |
+
+      | StarCoder2-15B | L40 | 100% | 0.164 [0.152, 0.177] | 2.55x | bimodal W |
+
+      | DeepSeek-V2-Lite | L15 | 56% | 0.155 [0.145, 0.167] | 2.75x | inverted-U |
+
+      | Qwen2.5-7B | L24 | 86% | 0.154 [0.132, 0.180] | 2.76x | late-plateau |
+
+
+      StarCoder2 bimodal: L11=0.162 vs L40=0.164, CI 重叠 98%。
+
+      PWCCA 降级为辅助指标，不做显著性声明。
+
+      cross_family_summary_v2.json (art_20260412_9509fe)。'
+    conclusion: success
+    metrics:
+      n_models: 3
+      n_triples: 252
+      n_perm: 5000
+      n_bootstrap: 1000
+      skip_pwcca_perm: true
+      codestral:
+        cka_mean: 0.1144
+        cka_peak: 0.179
+        cka_peak_layer: 32
+        cka_peak_relative_depth: 0.57
+        a2_p: 0
+        a2_obs_vs_null: 0.1144 vs 0.0380
+        pwcca_mean: 0.8087
+        elapsed_s: 403
+        cka_per_pair:
+          svg-tikz: 0.081
+          svg-asy: 0.113
+          tikz-asy: 0.149
+      starcoder2:
+        cka_mean: 0.1166
+        cka_peak: 0.164
+        cka_peak_layer: 40
+        cka_peak_relative_depth: 1
+        a2_p: 0
+        a2_obs_vs_null: 0.1166 vs 0.0457
+        pwcca_mean: 0.795
+        elapsed_s: 387
+        cka_per_pair:
+          svg-tikz: 0.071
+          svg-asy: 0.123
+          tikz-asy: 0.156
+      deepseek:
+        cka_mean: 0.1159
+        cka_peak: 0.155
+        cka_peak_layer: 15
+        cka_peak_relative_depth: 0.56
+        a2_p: 0
+        a2_obs_vs_null: 0.1159 vs 0.0422
+        pwcca_mean: 0.7858
+        elapsed_s: 392
+        cka_per_pair:
+          svg-tikz: 0.082
+          svg-asy: 0.104
+          tikz-asy: 0.162
+  format_residualized_cka_pilot:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T21:34:06.581Z'
+    updated_at: '2026-04-13T01:46:08.267Z'
+    hypothesis: 'Format-residualized CKA pilot on Qwen2.5-Coder-7B: train LogisticRegression
+      format classifier per layer, extract coef_ as format subspace W, project hidden
+      states to orthogonal complement H_res = H - W(W^T W)^{-1} W^T H, recompute CKA
+      + bootstrap CI + A2 perm on residualized states. If residualized CKA drops substantially
+      → syntax/format is main signal; if preserved → format-independent cross-format
+      structure exists. Parent: stage_b_analysis_multimodel.'
+    parent: stage_b_analysis_multimodel
+    notes: '## Format-Residualized CKA Pilot — SUPERSEDED
+
+
+      D047: "85% CKA retained" 结论无效。Verify mode 证明 rank-2 投影后 format accuracy 仍 >99.6%（所有层），说明
+      rank-2 投影未充分移除 format 信息。Pilot 的 CKA retained 指标基于不充分的 format removal，不能作为 "format-independent
+      signal" 的证据。
+
+
+      **Superseded by**: iterative_resid_sensitivity（迭代 residualization + random baseline
+      对照）。Iterative approach 将 format accuracy 降至 38-50%，同时 CKA 仍存活（delta <7%，A2 p=0.0）。'
+    metrics:
+      model: coder
+      elapsed_s: 1630
+      residualized_cka_mean_all: 0.1244
+      original_cka_mean_all: 0.1462
+      delta_pct: -14.9
+      cka_retained_pct: 85.1
+      a2_observed: 0.1244
+      a2_null_mean: 0.0427
+      a2_obs_null_ratio: 2.91
+      a2_p_value: 0
+      format_classifier_accuracy: 1
+      W_rank: 2
+      per_layer:
+        L4:
+          original: 0.1194
+          residualized: 0.0964
+          delta_pct: -19.3
+          var_retained: 0.949
+        L8:
+          original: 0.1223
+          residualized: 0.0989
+          delta_pct: -19.1
+          var_retained: 0.908
+        L12:
+          original: 0.1521
+          residualized: 0.13
+          delta_pct: -14.5
+          var_retained: 0.911
+        L16:
+          original: 0.1737
+          residualized: 0.1498
+          delta_pct: -13.8
+          var_retained: 0.941
+        L20:
+          original: 0.1626
+          residualized: 0.1375
+          delta_pct: -15.4
+          var_retained: 0.933
+        L24:
+          original: 0.1763
+          residualized: 0.1621
+          delta_pct: -8.1
+          var_retained: 0.837
+        L28:
+          original: 0.1871
+          residualized: 0.1596
+          delta_pct: -14.7
+          var_retained: 0.95
+    conclusion: success
+  format_residualized_cka_full:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-12T22:12:26.583Z'
+    updated_at: '2026-04-13T19:38:51.860Z'
+    hypothesis: 'D048 三方 format residualization on 6 models (coder, viscoder2, qwen25,
+      codestral, starcoder2, deepseek). Primary: PCA top-k PC removal (find minimal
+      k where format acc < 0.50) + CKA + bootstrap CI (B=1000) + A2 perm (5000). Supplementary:
+      iterative LR residualization (threshold=0.50). Control: random baseline (50
+      repeats, dimension-matched). Per model 7 layers. Parent: iterative_resid_sensitivity.'
+    parent: iterative_resid_sensitivity
+    notes: SUPERSEDED by format_residualized_cka_full_v2 (DONE/success). v1 was stuck
+      in PENDING while v2 completed successfully.
+    conclusion: killed
+  iterative_resid_sensitivity:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-13T01:42:33.901Z'
+    updated_at: '2026-04-13T04:09:16.038Z'
+    hypothesis: 'Iterative format residualization sensitivity analysis: compare acc_threshold=0.40
+      vs 0.50 on coder model, plus random-baseline control (50 repeats) to disentangle
+      variance drop from format removal. Parent: format_residualized_cka_pilot.'
+    parent: format_residualized_cka_pilot
+    conclusion: success
+    metrics:
+      hidden_dim: 3584
+      threshold_050_full:
+        layers_completed:
+        - L4
+        - L8
+        - L12
+        - L16
+        - L20
+        - L24
+        - L28
+        L4:
+          iters: 7
+          dims: 12
+          dim_pct: 0.33
+          final_acc: 0.4775
+          var_ret: 0.2786
+          orig_cka: 0.0871
+          final_cka: 0.0904
+          cka_delta_pct: 3.8
+          a2_p: 0
+        L8:
+          iters: 7
+          dims: 12
+          dim_pct: 0.33
+          final_acc: 0.4894
+          var_ret: 0.3425
+          orig_cka: 0.0905
+          final_cka: 0.0896
+          cka_delta_pct: -1
+          a2_p: 0
+        L12:
+          iters: 10
+          dims: 18
+          dim_pct: 0.5
+          final_acc: 0.4933
+          var_ret: 0.4841
+          orig_cka: 0.1214
+          final_cka: 0.1242
+          cka_delta_pct: 2.3
+          a2_p: 0
+        L16:
+          iters: 14
+          dims: 26
+          dim_pct: 0.73
+          final_acc: 0.4748
+          var_ret: 0.4197
+          orig_cka: 0.1411
+          final_cka: 0.1439
+          cka_delta_pct: 2
+          a2_p: 0
+        L20:
+          iters: 14
+          dims: 26
+          dim_pct: 0.73
+          final_acc: 0.4814
+          var_ret: 0.4609
+          orig_cka: 0.1284
+          final_cka: 0.1312
+          cka_delta_pct: 2.2
+          a2_p: 0
+        L24:
+          iters: 2
+          dims: 2
+          dim_pct: 0.06
+          final_acc: 0.469
+          var_ret: 0.8156
+          orig_cka: 0.141
+          final_cka: 0.1538
+          cka_delta_pct: 9.1
+          a2_p: 0
+        L28:
+          iters: 12
+          dims: 22
+          dim_pct: 0.61
+          final_acc: 0.4934
+          var_ret: 0.2896
+          orig_cka: 0.1486
+          final_cka: 0.151
+          cka_delta_pct: 1.6
+          a2_p: 0
+      aggregate_a2:
+        observed: 0.1263
+        null_mean: 0.0435
+        null_std: 0.003
+        null_95th: 0.0489
+        p_value: 0
+        n_perm: 5000
+      random_baseline_050:
+        all_layers_random_acc: 1
+        all_layers_random_var_matches_theory: true
+      verify:
+        rank2_single_projection_insufficient: true
+        qr_rerun_consistent: true
+        L4:
+          resid_acc: 0.8955
+          std: 0.0388
+        L8:
+          resid_acc: 0.9775
+          std: 0.008
+        L12:
+          resid_acc: 0.9219
+          std: 0.016
+        L16:
+          resid_acc: 0.8862
+          std: 0.0324
+        L20:
+          resid_acc: 0.8451
+          std: 0.0418
+        L24:
+          resid_acc: 0.469
+          std: 0.3297
+        L28:
+          resid_acc: 0.9272
+          std: 0.0302
+      pca_baseline_050:
+        L4:
+          k: 5
+          cka: 0.1362
+          var_ret: 0.9192
+          acc: 0.0873
+        L8:
+          k: 3
+          cka: 0.0996
+          var_ret: 0.87
+          acc: 0.0661
+        L12:
+          k: 2
+          cka: 0.142
+          var_ret: 0.869
+          acc: 0.0754
+        L16:
+          k: 3
+          cka: 0.2072
+          var_ret: 0.8506
+          acc: 0.0688
+        L20:
+          k: 2
+          cka: 0.1701
+          var_ret: 0.8572
+          acc: 0.16
+        L24:
+          k: 1
+          cka: 0.1534
+          var_ret: 0.9028
+          acc: 1
+        L28:
+          k: 6
+          cka: 0.1937
+          var_ret: 0.8112
+          acc: 0.0542
+    notes: '## Iterative Residualization Sensitivity + Random Baseline + PCA Baseline
+
+
+      ### ⚠️ project_out() QR Bug — 待 SVD 对比验证 (D051)
+
+      所有 iterative 结果使用 QR 版本 project_out()，每次迭代投影 3 dims 而非 2 dims（3-class multinomial
+      LR rank=2 但 QR 返回 3 列）。SVD fix (af20cf7) 已提交。
+
+      **D051 计划**：PID 60668 完成后，用 SVD 重跑 Coder iterative 7 层，对比 QR vs SVD（dims_removed
+      / CKA / format acc）。CKA 差异 < 5% → QR 可接受；> 5% → 全部重跑。
+
+
+      ### 实验完成度
+
+      - threshold_050: 全 7 层完成 (L4-L28) — QR 版本，3 dims/iter
+
+      - verify: 全部 7 层完成（inv 版本 99.6% / QR 版本 84-98%，均有 bug）
+
+      - random-baseline: 全 7 层完成（50 repeats）— 不受影响
+
+      - pca-baseline: 全 7 层完成 — 不受影响
+
+
+      ### 关键发现（PCA + random 部分仍然有效）
+
+      1. **Format 信息集中在高方差 PCs**：PCA 移除 1-6 PCs → format acc 降至 5-16%（Coder-specific，DeepSeek
+      不适用）
+
+      2. **PCA CKA > Original CKA**：移除 format-dominant variance 后 CKA 跃升 10-56%
+
+      3. **Random baseline 无效**：相同维数随机投影不改变 CKA 也不移除 format info
+
+      4. **Iterative CKA 存活结论方向正确，但具体数值需 SVD 对比确认（D051）**'
+  format_residualized_cka_full_v2:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-13T03:03:27.202Z'
+    updated_at: '2026-04-13T10:38:57.464Z'
+    hypothesis: 'D050 三方 format residualization on 6 models. Primary: iterative LR
+      residualization (threshold=0.50, cross-architecture robust). Supplementary:
+      PCA min-k format-removal (find min k top-PCs for acc < 0.50) + CKA + bootstrap
+      CI (1000) + A2 perm (5000). Control: random baseline (50 repeats, dimension-matched).
+      n_perm=5000 required. Parent: iterative_resid_sensitivity.'
+    parent: iterative_resid_sensitivity
+    notes: '## D050/D052/D053 Full 6-Model Results
+
+
+      ### PCA min-k 跨模型汇总（Method A）— COMPLETE ✅
+
+      | Model | k=2 layers | k=3 layers | k=4 | CKA Δ range | var_ret range |
+
+      |-------|-----------|-----------|-----|-------------|---------------|
+
+      | Coder | 7/7 | 0 | 0 | +4.5%~+32.4% | 0.84-0.93 |
+
+      | DeepSeek | 6/7 | 1 (L12) | 0 | +4.4%~+49.5% | 0.83-0.95 |
+
+      | VisCoder2 | 7/7 | 0 | 0 | +3.8%~+24.8% | 0.83-0.93 |
+
+      | Qwen2.5 | 7/7 | 0 | 0 | +7.7%~+29.7% | 0.87-0.93 |
+
+      | Codestral | 4/7 | 2 (L8,L24) | 1 (L16) | +8.3%~+245% | 0.86-0.94 |
+
+      | StarCoder2 | 5/7 | 2 (L17,L23) | 0 | +1.2%~+245% | 0.72-0.84 |
+
+
+      k_min 分布: k=2 36/42 (85.7%), k=3 5/42 (11.9%), k=4 1/42 (2.4% Codestral L16)
+
+
+      ### D051 SVD 对比 — DONE ✅ QR_ACCEPTABLE
+
+      Coder 7/7 层 QR vs SVD CKA diff:
+
+      | Layer | QR_dims | SVD_dims | QR_CKA | SVD_CKA | diff% |
+
+      | L4 | 12 | 18 | 0.0907 | 0.0928 | 2.27 |
+
+      | L8 | 12 | 18 | 0.0906 | 0.0900 | 0.71 |
+
+      | L12 | 18 | 30 | 0.1232 | 0.1248 | 1.30 |
+
+      | L16 | 24 | 38 | 0.1418 | 0.1419 | 0.11 |
+
+      | L20 | 28 | 42 | 0.1293 | 0.1290 | 0.21 |
+
+      | L24 | 4 | 6 | 0.1543 | 0.1537 | 0.40 |
+
+      | L28 | 24 | 36 | 0.1513 | 0.1510 | 0.20 |
+
+      Max diff = 2.27% < 5% threshold. SVD 移除更多 dims（阈值 0.4 vs 0.5）但 CKA 几乎不变。
+
+      DeepSeek 7/7 也已完成（aggregate A2 收尾中）。
+
+
+      ### → Step 2a: 仅补跑 A2 permutation
+
+      5 模型（DeepSeek/VisCoder2/Qwen2.5/Codestral/StarCoder2）需补跑 A2 perm n_perm=5000。
+
+      不需要重跑完整 iterative pipeline。
+
+
+      ### Iterative（Method B）— QR 版
+
+      全 6 模型完成。n_perm 不合规：Coder n_perm=5000 ✅，其余 5 模型 n_perm=500 ✗。
+
+
+      ### starcoder2 pca-baseline ✅ 已补完
+
+      ### D053 叙事
+
+      Format in oblique direction within joint PC1+PC2 subspace'
+    metrics:
+      pid: 60668
+      pid_status: DEAD (container restart)
+      log_path: /root/autodl-tmp/logs/resid_5models.log
+      pca_mink_full:
+        coder:
+          status: DONE
+          all_k_min: 2
+          CKA_delta_range: +4.5% to +32.4%
+          var_ret_range: 0.84-0.93
+        deepseek:
+          status: DONE
+          k_min: 6/7 layers k=2, L12 k=3
+          CKA_delta_range: +4.4% to +49.5%
+          var_ret_range: 0.83-0.95
+        viscoder2:
+          status: DONE
+          all_k_min: 2
+          CKA_delta_range: +3.8% to +24.8%
+          var_ret_range: 0.83-0.93
+        qwen25:
+          status: DONE
+          all_k_min: 2
+          CKA_delta_range: +7.7% to +29.7%
+          var_ret_range: 0.87-0.93
+        codestral:
+          status: DONE
+          k_min: L8 k=3, L16 k=4, L24 k=3, rest k=2
+          CKA_delta_range: +8.3% to +245%
+          var_ret_range: 0.86-0.94
+        starcoder2:
+          status: DONE
+          k_min: L17 k=3, L23 k=3, rest k=2
+          CKA_delta_range: +1.2% to +245%
+          var_ret_range: 0.72-0.84
+      k_min_distribution:
+        k=2: 36/42 (85.7%)
+        k=3: 5/42 (11.9%)
+        k=4: 1/42 (2.4%) — Codestral L16 only
+        k<=3_coverage: 41/42 (97.6%)
+      iterative_full:
+        coder: DONE
+        deepseek: DONE
+        viscoder2: DONE
+        qwen25: DONE
+        codestral: DONE
+        starcoder2: DONE
+      random_baseline_full:
+        coder: DONE
+        deepseek: DONE
+        viscoder2: DONE
+        qwen25: DONE
+        codestral: DONE
+        starcoder2: DONE
+      pca_baseline_full:
+        coder: DONE
+        deepseek: DONE
+        viscoder2: DONE
+        qwen25: DONE
+        codestral: DONE
+        starcoder2: TRUNCATED at L29 — 补跑中
+      pc2_only_ablation:
+        status: DONE (coder+deepseek only)
+        conclusion: Format in joint PC1+PC2, oblique direction
+      missing:
+      - starcoder2 pca-baseline (补跑中)
+    conclusion: success
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-13T08:35:35.254836+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-13T08:35:36.565525+00:00'
+  p1_subsampling_pid8822:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-13T11:35:00.497Z'
+    updated_at: '2026-04-13T11:35:00.497Z'
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-13T11:35:00.604739+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-13T11:35:01.395839+00:00'
+  step2a_recompute_pid6497:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-13T11:42:02.647Z'
+    updated_at: '2026-04-13T11:42:02.647Z'
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-13T11:42:02.756009+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-13T11:42:04.161581+00:00'
+  p1_python_neg_pid9097:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-13T12:13:07.988Z'
+    updated_at: '2026-04-13T12:59:32.100Z'
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-13T12:13:08.114698+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-13T12:13:09.313732+00:00'
+    notes: '[CORRECTED root cause, 2026-04-13] 根因修正：**AutoDL 实例整机重启**，不是 SIGHUP-to-shell。证据：`ps
+      -ef` 显示 PID1=boot.sh STIME 19:44、supervisord STIME 19:44、所有系统进程 STIME 均为 19:44；v1
+      日志 mtime 19:43:30 与 boot 时刻吻合。修复策略相应调整为"启动即写 checkpoint + 重启后自动 resume"，setsid/disown
+      对 reboot 无效故废弃。'
+  p1_python_neg_pid4048_v3:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-13T12:56:26.840Z'
+    updated_at: '2026-04-13T13:12:16.545Z'
+    notes: '[CORRECTED 2026-04-13 per Reviewer] 原 OOM 归因作废。数据体积打脸：12×252×7×3584×4B
+      = **0.303 GB**，系统 free=962 GB，OOM 几乎不可能（相差 3 个数量级）。v1 断点 19:43:30 已确认为 AutoDL
+      容器自发 restart（非 OOM）。v3 在 data loading 之后静默死亡的真实原因疑似：(a) cron hook 把 exp 从 PREPARING
+      翻成 failed 时连带 kill 了父进程；(b) 旧脚本无 `python -u`、stdout 未 flush，进程其实跑得更远但日志截断。修复方向：**不要调整
+      batch size / 不要改 pairwise 策略**，直接用 hardened 脚本（commit dc62278, python -u + trap
+      + per-layer ckpt）低预算重跑（exp_id: p1_python_neg_v4_hardened, 单卡 ≤1h），让 trap/ckpt
+      揭示真信号。本条为主条目。'
+    conclusion: failed
+  v3_neg_pid4048:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-13T12:56:27.132Z'
+    updated_at: '2026-04-13T13:12:20.087Z'
+    notes: '[SUPERSEDED 2026-04-13] **duplicate_of: p1_python_neg_pid4048_v3**（同一实验的重复
+      cron 条目）。为防止 auto_build_provenance double-count，本条标记为 superseded，主条目与完整根因分析见
+      p1_python_neg_pid4048_v3。原 OOM 归因已作废（数据仅 0.303 GB vs free 962 GB）。'
+    conclusion: failed
+    superseded_by: p1_python_neg_pid4048_v3
+  v3_recompute_pid4356:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-13T13:15:20.763Z'
+    updated_at: '2026-04-13T13:15:20.764Z'
+    notes: '[CORRECTED 2026-04-13 per Reviewer] 原 OOM 归因作废。scripts/recompute_a2_bootstrap.py
+      静态内存分析：单模型峰值 ~0.27 GB (Codestral hidden=6144: data 130 MB + all_fmt_data 130
+      MB + grams/centered ~10 MB)；qwen25/viscoder2/coder (hidden=3584) 仅 ~0.15 GB；含
+      numpy workspace/双缓冲最多 <1 GB。系统 free=962 GB → OOM 不可能 (相差 ~3 个数量级)。真实原因疑似 (a)
+      cron hook kill 父进程 (pending escalation 误触发)；(b) 旧脚本无 python -u / stdout 未 flush，截断导致黑箱断点。与
+      p1_python_neg_pid4048_v3 同属一个 cron/缓冲症状链。后续同样走 hardened 脚本模板重跑 (commit dc62278,
+      python -u + TERM/HUP/INT trap + 每层 CKPT print + 落盘 ckpt.txt)。本条 cron stale 进入
+      pending escalation 后卡死，tool gap，不再重复诊断。'
+  p1_python_neg_v4_hardened:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-13T13:15:33.813Z'
+    updated_at: '2026-04-13T14:21:24.410Z'
+    hypothesis: Hardened rerun of python-neg CKA (commit dc62278) to surface true
+      failure signal via ckpt/trap. Director 预审批：单卡 ≤1h walltime。不是为了科学结论，而是为了让黑箱断点可观测。
+    parent: p1_python_neg_pid4048_v3
+    notes: '[DIAGNOSTIC SUCCESS — AutoDL GPU hotplug reattach transient window (2026-04-13
+      ~22:09–22:10 CST)] Hardening 四件套（python -u / trap TERM+HUP+INT / diag header
+      with free+df+nvidia-smi / try-traceback + per-layer CKPT）工作正常，拿到完整 Python traceback
+      定位 AutoModelForCausalLM caching_allocator_warmup (scripts/negative_control_probe.py:117)。真因
+      = AutoDL 容器 GPU hotplug reattach 窗口期间 /dev/nvidia0 /dev/nvidiactl /dev/nvidia-uvm
+      暂时缺失 + /usr/bin/nvidia-smi 暂时为 0 字节占位文件。非代码 bug，非永久 infra failure。Hotplug 由用户
+      2026-04-13 在 AutoDL 控制台手动触发用于恢复 GPU driver。Hotplug 关闭后（~22:10 CST）GPU 设备节点齐备，nvidia-smi
+      恢复为 1260192 字节正本，driver=590.44.01，2× RTX PRO 6000 Blackwell 96GB 可用（sanity Worker
+      已验证）。同一 hotplug 事件连带 SIGKILL 了 p1_python_neg_cpu_v4_step3 (coder L4) 和 v3_subsampling_pid4458（待诊断
+      Worker 最终确认）。这是"infra 事件受害者"而非科学失败。commit=b926701。science 失败率统计应扣除本条。'
+    reproduce:
+      finished_at: '2026-04-13T14:00:43.948Z'
+    conclusion: success
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-13T14:00:44.275063+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-13T14:00:45.051598+00:00'
+  exp_006_eval_d031_v3_dpo_N2:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-13T13:18:57.066Z'
+    updated_at: '2026-04-15T02:54:40.514Z'
+    notes: '[CROSS-PROJECT CONTAMINATION 2026-04-13] 跨项目 cron 污染，不予审批（Director 驳回），保留占位防
+      cron 系统重复升级。'
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-15T02:54:40.657426+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-15T02:54:42.986905+00:00'
+  exp_006_eval_d031_v3_dpo_N4:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-13T13:19:00.809Z'
+    updated_at: '2026-04-15T02:54:53.470Z'
+    notes: '[CROSS-PROJECT CONTAMINATION 2026-04-13] 跨项目 cron 污染，不予审批（Director 驳回），保留占位防
+      cron 系统重复升级。'
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-15T02:54:53.597331+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-15T02:54:54.678690+00:00'
+  exp_006_eval_d031_v3_dpo_N8:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-13T13:19:03.722Z'
+    updated_at: '2026-04-15T02:55:04.920Z'
+    notes: '[CROSS-PROJECT CONTAMINATION 2026-04-13] 跨项目 cron 污染，不予审批（Director 驳回），保留占位防
+      cron 系统重复升级。'
+    conclusion: failed
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-15T02:55:05.047777+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-15T02:55:05.981308+00:00'
+  negative_control_cka_v5_retry:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-13T19:21:49.032Z'
+    updated_at: '2026-04-13T21:25:44.750Z'
+    hypothesis: Negative control CKA v5 retry — visual-X cross-format CKA for coder/viscoder2/qwen25.
+      PID 5429 on autodl-viscode-probe, launched via nohup disowned bash.
+    metrics:
+      cells_completed: 42
+      cells_total: 42
+      python_x_rows: 63
+      visual_x_rows: 63
+      n_perm: 5000
+      n_triples: 252
+      elapsed_s: 1510.1
+      c1_verdict: FAIL per D060
+      summary_coder:
+        python_x_mean_L28: 0.1023
+        visual_x_mean_L28: 0.1486
+        ratio: 0.6883
+      summary_viscoder2:
+        python_x_mean_L28: 0.0911
+        visual_x_mean_L28: 0.1374
+        ratio: 0.6633
+      summary_qwen25:
+        python_x_mean_L28: 0.03
+        visual_x_mean_L28: 0.0764
+        ratio: 0.3928
+    pid: 25697
+    notes: C1 FAIL per D060/D070 — python-X CKA not sufficiently separated from visual-X
+      CKA. 实验本身成功产出完整数据 (42/42 cells, 126 rows, n_perm=5000)，科学结论为 C1 negative control
+      未通过。Shared subspace 是 code-general 的，不限于 visual formats。
+    conclusion: success
+  llama3_baseline_cka:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-13T22:22:15.945Z'
+    updated_at: '2026-04-13T23:55:35.681Z'
+    hypothesis: Code-naive Llama-3-8B-base should show weaker cross-format CKA than
+      code-specialized models, serving as a code-training baseline for the framework
+    notes: '换用 NousResearch/Meta-Llama-3-8B（Llama-3-8B 无 gate 镜像，权重与官方一致）。Mistral
+      因含 code 预训练成分被排除。D074 判据不变。3 sample layers (L4/L18/L31 ≈ depth 13%/56%/97%).
+      6 format pairs × 252 prompts. Script: scripts/llama3_baseline_probe.py.'
+    conclusion: success
+    metrics:
+      visual_mean_cka: 0.1188
+      python_mean_cka: 0.0932
+      visual_significant: 9/9
+      python_significant: 2/9
+      d074_outcome: C_Mixed
+      pairs_passing_layer_criterion: 3/6
+  llama3_7layer_scan:
+    status: DONE
+    retry_count: 3
+    created_at: '2026-04-14T00:40:22.714Z'
+    updated_at: '2026-04-14T01:07:48.066Z'
+    hypothesis: 'D074 Llama-3-8B 3-layer scan showed split hypothesis (visual 9/9
+      sig, python 2/9 sig). 7-layer full scan strengthens this by testing all equidistant
+      layers (L4/L8/L12/L16/L20/L24/L28), matching Qwen protocol. Expect: visual cross-format
+      CKA significant at most layers; python-visual CKA non-significant at most layers.'
+    parent: llama3_baseline_cka
+    server: autodl-viscode-probe
+    gpu: cuda:1
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:1
+      started_at: '2026-04-14T01:03:14.040Z'
+      command: bash -c 'source /etc/network_turbo && cd /root/autodl-tmp/viscode_shared_subspace_probe
+        && /root/miniconda3/bin/python3 scripts/llama3_baseline_probe.py --phase all'
+      code_commit: 2c0e62b6a956d04ff2ce6ca2595cd72e5455d6de
+      finished_at: '2026-04-14T01:07:47.875Z'
+      training_hours: 0.08
+    log_path: ~/runs/viscode_shared_subspace_probe/llama3_7layer_scan.log
+    extra:
+      hook_events:
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-14T00:45:52.778980+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-14T00:45:53.614821+00:00'
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-14T00:51:28.807975+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-14T00:51:29.748146+00:00'
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-14T01:00:38.604166+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-14T01:00:39.599763+00:00'
+      - event: on_failed
+        action: autodl_release
+        ts: '2026-04-14T01:07:48.240730+00:00'
+      - event: on_failed
+        action: agent
+        ts: '2026-04-14T01:07:49.038123+00:00'
+      previous_failure:
+        conclusion: failed
+    pid: '45395'
+    conclusion: failed
+  llama3_7layer_scan_v2:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-14T01:10:13.752Z'
+    updated_at: '2026-04-14T01:13:43.065Z'
+    hypothesis: 'Llama-3-8B 7-layer full scan (v2, with checkpoint validation fix).
+      Same as llama3_7layer_scan but with code fix: load_extract_done now validates
+      .pt files exist before skipping.'
+    parent: llama3_7layer_scan
+    server: autodl-viscode-probe
+    gpu: cuda:0
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0
+      started_at: '2026-04-14T01:10:33.159Z'
+      command: bash -c 'source /etc/network_turbo && cd /root/autodl-tmp/viscode_shared_subspace_probe
+        && /root/miniconda3/bin/python3 scripts/llama3_baseline_probe.py --phase all'
+      code_commit: 2c0e62b6a956d04ff2ce6ca2595cd72e5455d6de
+    pid: '46108'
+    log_path: ~/runs/viscode_shared_subspace_probe/llama3_7layer_scan_v2.log
+    conclusion: failed
+  llama3_7layer_scan_v3:
+    status: DONE
+    retry_count: 0
+    created_at: '2026-04-14T01:13:49.396Z'
+    updated_at: '2026-04-14T03:38:04.391Z'
+    hypothesis: Llama-3-8B 7-layer full scan (v3). Manifest cleared + code fix for
+      .pt validation. Clean extraction from scratch.
+    parent: llama3_7layer_scan_v2
+    server: autodl-viscode-probe
+    gpu: cuda:0
+    account: root
+    reproduce:
+      server: autodl-viscode-probe
+      gpu: cuda:0
+      started_at: '2026-04-14T01:14:07.295Z'
+      command: bash -c 'source /etc/network_turbo && cd /root/autodl-tmp/viscode_shared_subspace_probe
+        && /root/miniconda3/bin/python3 scripts/llama3_baseline_probe.py --phase all'
+      code_commit: 2c0e62b6a956d04ff2ce6ca2595cd72e5455d6de
+    pid: '46529'
+    log_path: ~/runs/viscode_shared_subspace_probe/llama3_7layer_scan_v3.log
+    conclusion: success
+    metrics:
+      visual_cka_mean: 0.1159
+      python_cka_mean: 0.0851
+      visual_significant: 21/21
+      python_significant: 1/21
+      total_cells: 42
+      elapsed_s: 8283.5
+      sampled_layers:
+      - 4
+      - 8
+      - 12
+      - 16
+      - 20
+      - 24
+      - 28
+  d081_format_mean_residual_cka:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-14T06:42:40.205Z'
+    updated_at: '2026-04-14T06:42:48.000Z'
+    hypothesis: 'D081 Task 1: Format-mean residualized CKA. Subtract per-format mean
+      from hidden states, recompute CKA + 1000-perm test. Tests whether cross-format
+      signal survives removal of format-specific mean activation.'
+  d081_stratified_permutation:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-14T06:42:41.264Z'
+    updated_at: '2026-04-14T06:42:49.944Z'
+    hypothesis: 'D081 Task 2: Stratified permutation null using SBERT caption clusters.
+      Permute format labels within semantic clusters to control for visual semantics.
+      Tests whether cross-format CKA exceeds a semantics-controlled null.'
+  d081_procrustes_k_sensitivity:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-14T06:42:42.223Z'
+    updated_at: '2026-04-14T06:42:51.759Z'
+    hypothesis: 'D081 Task 3: Procrustes k sensitivity. Rerun Procrustes alignment
+      at k=20,50,100,200 to verify robustness of conclusions to PCA dimensionality
+      choice.'
+  d081_bh_fdr_correction:
+    status: PREPARING
+    retry_count: 0
+    created_at: '2026-04-14T06:42:43.060Z'
+    updated_at: '2026-04-14T06:42:53.552Z'
+    hypothesis: 'D081 Task 4: BH-FDR global correction. Collect all per-pair per-layer
+      permutation p-values into one pool, apply Benjamini-Hochberg FDR at α=0.05.
+      Replaces asymmetric correction approach.'

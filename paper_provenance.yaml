@@ -1,0 +1,903 @@
+paper:
+  title: Cross-Format Representational Probing of Visual Code LLMs:\\A Training-Free
+    Framework with a Qwen2.5 Case Study
+  version: 1
+  generated_at: '2026-04-12T14:27:14Z'
+  source: auto-scan from existing tex files
+claims:
+- text: 'H$_0$:'
+  type: quantitative
+  location:
+    section: appendix
+    context: bold
+  id: C001
+  evidence:
+  - exp_id: stage_a_vllm
+    artifact: eval_pool
+  deprecated: false
+- text: 0-shot
+  type: quantitative
+  location:
+    section: appendix
+    context: bold
+  id: C002
+  evidence:
+  - exp_id: stage_a_vllm
+    artifact: eval_pool
+  deprecated: false
+- text: 3-shot
+  type: quantitative
+  location:
+    section: appendix
+    context: bold
+  id: C003
+  evidence:
+  - exp_id: stage_a_vllm
+    artifact: eval_pool
+  deprecated: false
+- text: Format-classification probe accuracy with real vs.\ permuted labels.  The
+    large gap ($ 0.667$) confirms that probe accuracy reflects genuine format information
+    rather than memorized structure.
+  type: quantitative
+  location:
+    section: appendix
+    context: result_statement
+  id: C004
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: format_probe_results
+  deprecated: false
+- text: 'A2 permutation test ($n{=5{,000$): observed cross-format CKA mean vs.\ null
+    distribution obtained by permuting sample identities within each format.  $p{<0.001$
+    for all models confirms that cross-form'
+  type: quantitative
+  location:
+    section: appendix
+    context: result_statement
+  id: C005
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: a2_permutation_results
+  deprecated: false
+- text: Format classification probe accuracy (5-fold CV, logistic regression). All
+    21 model--layer cells are 1.0000.
+  type: quantitative
+  location:
+    section: appendix
+    context: result_statement
+  id: C006
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: format_probe_results
+  deprecated: false
+- text: PWCCA permutation null calibration (300 perms). The observed/null gap is statistically
+    significant but small (ratio ${1.1$), compared to CKA's ${3$ null ratio.
+  type: quantitative
+  location:
+    section: appendix
+    context: result_statement
+  id: C007
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: pwcca_results
+  deprecated: false
+- text: 'SBERT threshold sensitivity: mean CKA at L28 by matching threshold. All 252
+    triples have min cosine $ 0.70$, so thresholds 0.60 and 0.65 yield identical results
+    ($N{=252$). At thresholds $ 0.75$, $N$ '
+  type: quantitative
+  location:
+    section: appendix
+    context: result_statement
+  id: C008
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: sbert_sensitivity
+  deprecated: false
+- text: 'Generation uses vLLM vllm in fp16 with temperature $T{=0.3$, $top\_p{=1.0$,
+    $n{=1$, and format-specific max tokens (SVG/TikZ: 1024, Asy: 2048) and stop tokens.'
+  type: quantitative
+  location:
+    section: appendix
+    context: result_statement
+  id: C009
+  evidence:
+  - exp_id: stage_a_vllm
+    artifact: generation_config
+  deprecated: false
+- text: 'Content fidelity uses a hybrid metric: visual attributes with CLIPScore clip
+    SNR $ 1.0$ (color, shape count, stroke/fill) are scored via CLIPScore (ViT-L/14);
+    attributes with SNR $< 1.0$ (quadrant, sp'
+  type: quantitative
+  location:
+    section: appendix
+    context: result_statement
+  id: C010
+  evidence:
+  - exp_id: stage_a_vllm
+    artifact: content_fidelity
+  deprecated: false
+- text: 'Stage A generation summary: validity rate per model and format (3,600 total,
+    0-shot and 3-shot pooled). Temperature $T{=0.3$, $n{=1$ per prompt. (Table~A9)'
+  type: quantitative
+  location:
+    section: appendix
+    context: result_statement
+  id: C011
+  evidence:
+  - exp_id: stage_a_vllm
+    artifact: generation_summary
+  deprecated: false
+- text: Power is the proportion of iterations where the bootstrapped mean CKA exceeds
+    the null threshold; power $= 1.0$ at both $N{=6$ and $N{=9$ confirms that the
+    permutation test can detect signals of the o
+  type: quantitative
+  location:
+    section: appendix
+    context: result_statement
+  id: C012
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: power_simulation
+  deprecated: false
+- text: PWCCA corroborates the direction of the CKA signal---observed values exceed
+    the permutation null for all three models---but its observed/null ratio (1.13--1.15$$)
+    is far below CKA's (${3$), limiting i
+  type: quantitative
+  location:
+    section: appendix
+    context: result_statement
+  id: C013
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: pwcca_results
+  deprecated: false
+- text: Applied to the Qwen2.5 family across SVG, TikZ, and Asymptote (252 matched
+    triples, 7 layers), our case study finds statistically significant but weak cross-format
+    CKA (${3$ the permutation null), sys
+  type: quantitative
+  location:
+    section: conclusion
+    context: result_statement
+  id: C014
+  evidence:
+  - exp_id: stage_b_analysis_v2
+  - exp_id: stage_b_analysis_multimodel
+  deprecated: false
+- text: A non-visual negative control (Python standard library code) confirms that
+    the visual cross-format signal exceeds what generic code similarity predicts (Python--visual
+    CKA is 30--58\% lower, with mixe
+  type: quantitative
+  location:
+    section: conclusion
+    context: result_statement
+  id: C015
+  evidence: []
+  deprecated: true
+- text: Specialized systems such as VisCoder2 viscoder2, LLM4SVG llm4svg2025, and
+    Chat2SVG chat2svg2025 have demonstrated increasingly sophisticated visual code
+    generation, while general-purpose code LLMs lik
+  type: quantitative
+  location:
+    section: introduction
+    context: result_statement
+  id: C016
+  evidence: []
+  deprecated: false
+  note: literature citation, no experiment
+- text: We demonstrate this framework through a case study on the Qwen2.5 model family.
+  type: quantitative
+  location:
+    section: introduction
+    context: result_statement
+  id: C017
+  evidence:
+  - exp_id: stage_b_probe_v4
+  deprecated: false
+- text: Our case study examines three Qwen2.5-based 7B models across SVG, TikZ, and
+    Asymptote using 252 semantically matched triples at 7 equidistant layers.
+  type: quantitative
+  location:
+    section: introduction
+    context: result_statement
+  id: C018
+  evidence:
+  - exp_id: stage_b_probe_v4
+  deprecated: false
+- text: A non-visual negative control (Python standard library functions) shows 30--58\%
+    lower CKA with mixed significance (4/9 pairs reach $p < 0.05$ vs.\ $p < 0.001$
+    for all visual pairs), confirming the si
+  type: quantitative
+  location:
+    section: introduction
+    context: result_statement
+  id: C019
+  evidence: []
+  deprecated: true
+- text: Empirical findings from a Qwen2.5 case study---the first analysis of visual-attribute
+    representations in code-generation hidden states---demonstrating both the utility
+    of the framework and the complex
+  type: quantitative
+  location:
+    section: introduction
+    context: result_statement
+  id: C020
+  evidence:
+  - exp_id: stage_b_analysis_v2
+  deprecated: false
+- text: we introduce a training-free probing framework for measuring cross-format
+    representational similarity in visual code LLMs.
+  type: methodological
+  location:
+    section: introduction
+    context: finding_statement
+  id: C021
+  evidence: []
+  deprecated: false
+  note: methodological claim, no experiment
+- text: We find statistically significant but weak cross-format CKA (${3$ the permutation
+    null), systematically confounded by syntax-family similarity (Tik
+  type: methodological
+  location:
+    section: introduction
+    context: finding_statement
+  id: C022
+  evidence: []
+  deprecated: true
+- text: While A1 power simulation confirms detectability (power = 1.0), only one model
+    family is examined; generalization to architecturally distinct families remains
+    open.
+  type: quantitative
+  location:
+    section: limitations
+    context: result_statement
+  id: C023
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: power_simulation
+  deprecated: false
+- text: The distinction between statistical and practical significance is critical
+    given small absolute CKA values (0.08--0.15).
+  type: quantitative
+  location:
+    section: limitations
+    context: result_statement
+  id: C024
+  evidence:
+  - exp_id: stage_b_analysis_v2
+  deprecated: false
+- text: The probe pool is matched via SBERT caption similarity (cosine $ 0.70$), not
+    by rendering identical visual content in multiple formats.
+  type: quantitative
+  location:
+    section: limitations
+    context: result_statement
+  id: C025
+  evidence:
+  - exp_id: stage_b_probe_v4
+    artifact: sbert_triples
+  deprecated: false
+- text: Qwen2.5-Coder-7B-Instruct
+  type: quantitative
+  location:
+    section: methods
+    context: bold
+  id: C026
+  evidence: []
+  deprecated: false
+  note: model description, no experiment
+- text: Qwen2.5-7B
+  type: quantitative
+  location:
+    section: methods
+    context: bold
+  id: C027
+  evidence: []
+  deprecated: false
+  note: model description, no experiment
+- text: VisCoder2-7B
+  type: quantitative
+  location:
+    section: methods
+    context: bold
+  id: C028
+  evidence: []
+  deprecated: false
+  note: model description, no experiment
+- text: Qwen2.5-Coder-7B-Instruct qwen25coder --- a code-specialized LLM instruction-tuned
+    on broad programming tasks, serving as the primary model with demonstrated multi-format
+    visual code capability.
+  type: quantitative
+  location:
+    section: methods
+    context: result_statement
+  id: C029
+  evidence: []
+  deprecated: false
+  note: model description, no experiment
+- text: CKA estimates are stable across thresholds 0.60--0.70, where all 252 triples
+    are retained (Table~tab:sbert_sensitivity, Appendix).
+  type: quantitative
+  location:
+    section: methods
+    context: result_statement
+  id: C030
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: sbert_sensitivity
+  deprecated: false
+- text: 'SVGX-Core-250k was packaged in December 2024 (post Qwen2.5 training cutoff),
+    but underlying SVG content from SVGRepo and public icon libraries predates the
+    cutoff and may have entered pretraining via '
+  type: quantitative
+  location:
+    section: methods
+    context: result_statement
+  id: C031
+  evidence: []
+  deprecated: false
+  note: data provenance note, no experiment
+- text: All code, eval pool JSONL files (with SHA256 hashes recorded prior to generation),
+    probe pool triples with per-triple provenance metadata, and pre-registration document
+    (v3.4) are released.
+  type: quantitative
+  location:
+    section: methods
+    context: result_statement
+  id: C032
+  evidence: []
+  deprecated: false
+  note: release statement, no experiment
+- text: 37\% drop at L28
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: bold
+  id: C033
+  evidence:
+  - exp_id: stage_b_analysis_v2
+  deprecated: false
+- text: Mean CKA (linear kernel) across format pairs per model at selected layers.
+    All values significant at $p < 0.001$ (permutation test, $N{=5{,000$). Complete
+    per-pair values in Table~tab:cka_complete (Ap
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C034
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: cka_complete_table
+  deprecated: false
+- text: A permutation test (A2; 5{,000 permutations of sample indices) confirms that
+    the observed CKA significantly exceeds chance for all three models ($p < 0.001$;
+    Table~tab:a2_perm; Figure~fig:perm_null).
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C035
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: a2_permutation_results
+  deprecated: false
+- text: 'The effect is small but statistically reliable: observed CKA is approximately
+    $3$ the permutation null mean (Qwen2.5-Coder: $0.123 / 0.041 = 2.96$; VisCoder2:
+    $0.124 / 0.044 = 2.81$; Qwen2.5 base: $0.'
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C036
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: a2_permutation_results
+  deprecated: false
+- text: 'We characterize this as statistically significant but weak cross-format representational
+    similarity: CKA values of 0.08--0.15 are reliably above the permutation null ($p
+    < 0.001$, all models) but smal'
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C037
+  evidence:
+  - exp_id: stage_b_analysis_v2
+  deprecated: false
+- text: At L28 for Qwen2.5-Coder, TikZ--Asy CKA is 0.229 versus SVG--TikZ at 0.103
+    ($2.2$); at L12 for Qwen2.5 base, the ratio is $0.182 / 0.061 = 3.0$.
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C038
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: cka_pairs_table
+  deprecated: false
+- text: CKA by format pair at selected layers (Qwen2.5-Coder shown; other models follow
+    the same pattern).
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C039
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: cka_pairs_table
+  deprecated: false
+- text: Layer-wise mean CKA trajectories across format pairs (all $p < 0.001$, permutation
+    test). Qwen2.5-Base exhibits a sharp drop at L28 (F4), while instruction-tuned
+    models plateau or continue increasing.
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C040
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: cka_layer_figure
+  deprecated: false
+- text: Qwen2.5-Coder and VisCoder2 show monotonically increasing CKA from L4 through
+    L28 (Figure~fig:cka_layer).
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C041
+  evidence:
+  - exp_id: stage_b_analysis_v2
+  deprecated: false
+- text: 'VisCoder2, fine-tuned from Qwen2.5-Coder on 679K multi-format examples viscoder2,
+    exhibits nearly identical CKA profiles: $_{ = 0.012$ at L28.'
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C042
+  evidence:
+  - exp_id: stage_b_analysis_v2
+  deprecated: false
+- text: 'Orthogonal Procrustes distance (PCA $k{=50$) confirms CKA trends: mean values
+    range from 0.094 to 0.158, with Qwen2.5 base at L28 again lowest (0.094), corroborating
+    the last-layer washout (full table'
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C043
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: procrustes_results
+  deprecated: false
+- text: 'Pairwise token-ID Jaccard similarities are low (SVG--TikZ: 0.025, SVG--Asy:
+    0.035, TikZ--Asy: 0.136; three-way: 0.012), confirming that the 100\% format probe
+    accuracy is a tokenization artifact.'
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C044
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: token_jaccard
+  deprecated: false
+- text: 'Negative control: mean CKA at L28 for Python--visual pairs vs.\ visual cross-format
+    pairs (permutation test, 5{,000 permutations). Python--X $p$-values are per-pair
+    ranges across three Python--visual '
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C045
+  evidence:
+  - exp_id: negative_control_cka_v5_retry
+    artifact: D060_C1_formal_evaluation
+  deprecated: false
+- text: 'Python--visual $p$-values are mixed: 4 of 9 per-pair tests reach $p < 0.05$
+    (driven by Python--SVG and Python--TikZ for the instruction-tuned models), while
+    all Qwen2.5 base pairs and all Python--Asy '
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C046
+  evidence: []
+  deprecated: true
+- text: In contrast, all 9 visual cross-format pairs are highly significant ($p <
+    0.001$).
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C047
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: a2_permutation_results
+  deprecated: false
+- text: This pattern---lower CKA magnitudes, inconsistent significance, and no pair
+    reaching the consistent $p < 0.001$ of visual pairs---confirms that the cross-format
+    CKA signal is not a generic property of
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C048
+  evidence: []
+  deprecated: true
+- text: 'Within the Python--visual pairs, Python--Asy CKA (e.g., Coder L28: 0.130)
+    consistently exceeds Python--SVG (0.073), paralleling the TikZ--Asy $>$ SVG--TikZ
+    asymmetry in visual pairs.'
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C049
+  evidence: []
+  deprecated: true
+- text: The CKA signal (0.08--0.15) is a second-order effect within representations
+    overwhelmingly organized by format.
+  type: quantitative
+  location:
+    section: results_discussion_v1
+    context: result_statement
+  id: C050
+  evidence:
+  - exp_id: stage_b_analysis_v2
+  deprecated: false
+- text: we observe statistically significant cross-format representational similarity.
+  type: methodological
+  location:
+    section: results_discussion_v1
+    context: finding_statement
+  id: C051
+  evidence:
+  - exp_id: stage_b_analysis_v2
+  deprecated: false
+- text: This suggests the base model's final layers shift toward its language modeling
+    objective, dissipating cross-format structure that instruction-tuned models retain.
+  type: methodological
+  location:
+    section: results_discussion_v1
+    context: finding_statement
+  id: C052
+  evidence: []
+  deprecated: true
+- text: 'This suggests visual-code SFT does not substantially alter cross-format representational
+    structure, though a contamination caveat applies: VisCoder2''s SFT'
+  type: methodological
+  location:
+    section: results_discussion_v1
+    context: finding_statement
+  id: C053
+  evidence:
+  - exp_id: stage_b_analysis_v2
+  deprecated: false
+- text: 'Applying this framework to the Qwen2.5 family (Coder-7B-Instruct, base 7B,
+    and VisCoder2-7B) across 252 semantically matched triples at 7 equidistant layers,
+    we find:'
+  type: quantitative
+  location:
+    section: title_abstract
+    context: result_statement
+  id: C054
+  evidence:
+  - exp_id: stage_b_probe_v4
+  - exp_id: stage_b_analysis_v2
+  deprecated: false
+- text: cross-format CKA is statistically significant but weak (0.076--0.149, $p <
+    0.001$, ${3$ the permutation null);
+  type: quantitative
+  location:
+    section: title_abstract
+    context: result_statement
+  id: C055
+  evidence:
+  - exp_id: stage_b_analysis_v2
+    artifact: a2_permutation_results
+  deprecated: false
+- text: 'Applying this framework to the Qwen2.5 model family (Coder, VisCoder2, and
+    base) across 252 semantically matched triples and 7 layers, we report five findings:'
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C056
+  evidence: []
+  deprecated: true
+- text: (2)~cross-format CKA is statistically significant but weak (0.076--0.149,
+    $p < 0.001$, ${3$ the permutation null);
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C057
+  evidence: []
+  deprecated: true
+- text: Specialized models such as VisCoder2 viscoder2 and systems trained on DaTikZ
+    datikz have demonstrated increasingly sophisticated visual code generation, and
+    the broader Qwen2.5 family of code-oriented
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C058
+  evidence: []
+  deprecated: true
+- text: 'Five empirical findings from a case study on the Qwen2.5 model family (Qwen2.5-Coder-7B-Instruct,
+    VisCoder2-7B, and Qwen2.5-7B) across SVG, TikZ, and Asymptote, using 252 semantically
+    matched triples '
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C059
+  evidence: []
+  deprecated: true
+- text: We emphasize that this paper reports a single-family case study on Qwen2.5
+    models, not a general claim about visual code LLMs.
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C060
+  evidence: []
+  deprecated: true
+- text: Applied to the Qwen2.5 model family across SVG, TikZ, and Asymptote formats,
+    our case study yields five findings.
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C061
+  evidence: []
+  deprecated: true
+- text: Cross-format CKA is statistically significant but weak, ranging from 0.076
+    to 0.149 at approximately $3$ the permutation null~(F2).
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C062
+  evidence: []
+  deprecated: true
+- text: While A1 power simulation confirms that CKA signals of the observed magnitude
+    are detectable (power = 1.0), this design is closer to a within-family ablation
+    study than a cross-model comparison.
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C063
+  evidence: []
+  deprecated: true
+- text: Only one model family (Qwen2.5) is examined; generalization to architecturally
+    distinct families (CodeLlama, StarCoder, DeepSeek-Coder) remains an open question.
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C064
+  evidence: []
+  deprecated: true
+- text: A1 power = 1.0 confirms that the permutation test can detect a CKA signal
+    of the observed magnitude; it does not establish that the effect size is large
+    enough to be practically meaningful or to suppo
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C065
+  evidence: []
+  deprecated: true
+- text: The distinction between statistical significance and practical significance
+    is critical given the small absolute CKA values (0.08--0.15).
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C066
+  evidence: []
+  deprecated: true
+- text: VisCoder2 is fine-tuned on VisCode-Multi-679K, which includes VCM-Asy (overlapping
+    with the probe pool source for Asymptote) and VCM-TikZ (71.7\% overlap with the
+    TikZ probe pool source).
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C067
+  evidence: []
+  deprecated: true
+- text: However, the remaining Qwen2.5 models may also have been exposed to SVG and
+    TikZ content from Common Crawl during pretraining, a risk that cannot be fully
+    quantified.
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C068
+  evidence: []
+  deprecated: true
+- text: The probe pool is semantically matched via SBERT caption similarity (cosine
+    $ 0.70$), not by rendering the same visual content in multiple formats.
+  type: quantitative
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: result_statement
+  id: C069
+  evidence: []
+  deprecated: true
+- text: We find that (F1)~format identity is perfectly classifiable at all layers,
+    (F2)~cross-format CKA is statistically significant but weak, (F3)~a syntax family
+    c
+  type: methodological
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: finding_statement
+  id: C070
+  evidence: []
+  deprecated: true
+- text: we observe is of uncertain origin.
+  type: methodological
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: finding_statement
+  id: C071
+  evidence: []
+  deprecated: true
+- text: our findings to these broader settings is unknown.
+  type: methodological
+  location:
+    section: title_abstract_intro_concl_lim_v1
+    context: finding_statement
+  id: C072
+  evidence: []
+  deprecated: true
+tables:
+- caption: Complete CKA similarity values per model, layer, and format pair. Mean
+    is the arithmetic average of the three format pairs, consistent with main text
+    Table~\ref{tab:cka_mean
+  label: tab:cka_complete
+  location:
+    section: appendix
+  cells: []
+  id: T001
+  deprecated: false
+- caption: Procrustes distance per model, layer, and format pair. Lower values indicate
+    greater representational similarity after optimal rotation.
+  label: tab:procrustes_complete
+  location:
+    section: appendix
+  cells: []
+  id: T002
+  deprecated: false
+- caption: Projection-Weighted CCA (PWCCA; \citealt{morcos2018pwcca
+  label: tab:pwcca_complete
+  location:
+    section: appendix
+  cells: []
+  id: T003
+  deprecated: false
+- caption: Format-classification probe accuracy with real vs.\ permuted labels. The
+    large gap ($\approx 0.667$) confirms that probe accuracy reflects genuine format
+    information rather than memorized structure.
+  label: tab:permuted_probe
+  location:
+    section: appendix
+  cells: []
+  id: T004
+  deprecated: false
+- caption: A2 permutation test ($n{=
+  label: tab:a2_permutation
+  location:
+    section: appendix
+  cells: []
+  id: T005
+  deprecated: false
+- caption: Format classification probe accuracy (5-fold CV, logistic regression).
+    All 21 model--layer cells are 1.0000.
+  label: tab:probe_accuracy
+  location:
+    section: appendix
+  cells: []
+  id: T006
+  deprecated: false
+- caption: PWCCA permutation null calibration (300 perms). The observed/null gap is
+    statistically significant but small (ratio ${\sim
+  label: tab:pwcca_null
+  location:
+    section: appendix
+  cells: []
+  id: T007
+  deprecated: false
+- caption: 'SBERT threshold sensitivity: mean CKA at L28 by matching threshold. All
+    252 triples have min cosine $\geq 0.70$, so thresholds 0.60 and 0.65 yield identical
+    results ($N{='
+  label: tab:sbert_sensitivity
+  location:
+    section: appendix
+  cells: []
+  id: T008
+  deprecated: false
+- caption: 'Stage A generation summary: validity rate per model and format (3,600
+    total, 0-shot and 3-shot pooled). Temperature $T{='
+  label: tab:stage_a_summary
+  location:
+    section: appendix
+  cells: []
+  id: T009
+  deprecated: false
+- caption: Mean CKA (linear kernel) across format pairs per model at selected layers.
+    All values significant at $p < 0.001$ (permutation test, $N{=
+  label: tab:cka_mean
+  location:
+    section: results_discussion_v1
+  cells: []
+  id: T010
+  deprecated: false
+- caption: A2 permutation test (5,000 permutations). Observed CKA is the layer-averaged
+    mean across format pairs.
+  label: tab:a2_perm
+  location:
+    section: results_discussion_v1
+  cells: []
+  id: T011
+  deprecated: false
+- caption: CKA by format pair at selected layers (Qwen2.5-Coder shown; other models
+    follow the same pattern).
+  label: tab:cka_pairs
+  location:
+    section: results_discussion_v1
+  cells: []
+  id: T012
+  deprecated: false
+- caption: 'Negative control: mean CKA at L28 for Python--visual pairs vs.\ visual
+    cross-format pairs (permutation test, 5{,'
+  label: tab:c1_neg
+  location:
+    section: results_discussion_v1
+  cells: []
+  id: T013
+  deprecated: false
+figures:
+- caption: A2 permutation null distributions (5,000 permutations) with observed CKA
+    (dashed red). All observed values fall $>$20 standard deviations above the null
+    mean.
+  label: fig:perm_null
+  source_path: fig_permutation_null.pdf
+  location:
+    section: results_discussion_v1
+  type: result
+  id: F001
+  deprecated: false
+- caption: CKA by format pair across layers. TikZ--Asy consistently exceeds SVG--TikZ
+    by 2--3$\times$ across all models (F3), consistent with a syntax-family confound
+    rather than visual semantic alignment.
+  label: fig:cka_format_pairs
+  source_path: fig_cka_format_pairs.pdf
+  location:
+    section: results_discussion_v1
+  type: result
+  id: F002
+  deprecated: false
+- caption: Layer-wise mean CKA trajectories across format pairs (all $p < 0.001$,
+    permutation test). Qwen2.5-Base exhibits a sharp drop at L28 (F4), while instruction-tuned
+    models plateau or continue increasing.
+  label: fig:cka_layer
+  source_path: fig_cka_trajectories.pdf
+  location:
+    section: results_discussion_v1
+  type: result
+  id: F003
+  deprecated: false
+_completeness:
+  coverage: 40/51
+  claims: 48
+  tables: 13
+  figures: 3
+  tier_counts:
+    tier1: 0
+    tier2: 40
+    tier3: 11
+    tierX: 0
+  last_checked: '2026-04-14T00:14:00.640618+00:00'
